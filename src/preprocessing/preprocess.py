@@ -12,7 +12,7 @@ def poly_resample_ecg(
     up = target_sample_rate // gcd
     down = sample_rate // gcd
 
-    resampled_ecg = resample_poly(ecg, up=up, down=down, axis=1)
+    resampled_ecg = resample_poly(ecg, up=up, down=down, axis=-1)
     return resampled_ecg
 
 
@@ -28,13 +28,13 @@ def fft_resample_ecg(
         error_in_sample_rate < 0.5
     ), f"Actual sample rate {actual_sample_rate} is not within 0.5 Hz of target sample rate {target_sample_rate}."
 
-    resampled_ecg = resample(ecg, num=int(num), axis=1)
+    resampled_ecg = resample(ecg, num=int(num), axis=-1)
     return resampled_ecg
 
 
 def resample_ecg(
     ecg: np.ndarray, sample_rate: int, target_sample_rate: int
-) -> Tuple[np.ndarray]:
+) -> Tuple[np.ndarray, str]:
     """Resample an ECG. We use polymorphic resmpling if the original sampling rate and target sampling
     rate are integer multiples of each other. Otherwise, FFT resampling is used"""
 
