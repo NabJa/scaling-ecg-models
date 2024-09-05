@@ -38,6 +38,9 @@ def resample_ecg(
     """Resample an ECG. We use polymorphic resmpling if the original sampling rate and target sampling
     rate are integer multiples of each other. Otherwise, FFT resampling is used"""
 
+    if sample_rate == target_sample_rate:
+        return ecg, "None"
+
     if sample_rate % target_sample_rate == 0 or target_sample_rate % sample_rate == 0:
         return poly_resample_ecg(ecg, sample_rate, target_sample_rate), "Polyphase"
 

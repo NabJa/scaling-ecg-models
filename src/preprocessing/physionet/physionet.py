@@ -12,6 +12,8 @@ Preprocessing steps:
 """
 
 import argparse
+from functools import partial
+from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +26,11 @@ from tqdm import tqdm
 DX_MAP = pd.read_csv(
     "https://raw.githubusercontent.com/physionetchallenges/physionetchallenges.github.io/master/2020/Dx_map.csv"
 )
+
+
+def save_as_csv(data, path) -> None:
+    df = pd.DataFrame(data)
+    df.to_csv(path, index=False)
 
 
 def load_mat(filepath: Path) -> np.ndarray:
@@ -54,10 +61,37 @@ class MetaData:
             "sample": self.sample,
             "leads": self.leads,
             "age": self.age,
+            "sex": self.sex,
             "sampling_rate": self.sampling_rate,
             "length": self.length,
             "dx": self.dx,
         }
+
+
+def preprocess_file(
+    filepath: Path, output_dir: Path, target_sampling_rate: int
+) -> dict:
+    output_filepath = output_dir / f"{filepath.stem}.pt"
+
+    try:
+        metadata = MetaData(filepath.with_suffix(".hea"))
+        ecg = load_mat(filepath)
+    except Exception as e:
+        print(f"Error processing {filepath}: {str(e)}")
+        return {}
+
+    ecg = butter_filter(ecg, metadata.sampling_rate)
+    ecg, method = resample_ecg(ecg, metadata.sampling_rate, target_sampling_rate)
+    ecg = zscore_normalize(ecg)
+
+    meta = metadata.to_dict()
+    meta["method"] = method
+    meta["new_length"] = ecg.shape[1]
+    meta["filepath"] = str(output_filepath)
+    meta["original_filepath"] = str(filepath)
+
+    torch.save(ecg, output_filepath)
+    return meta
 
 
 def parse_args():
@@ -87,32 +121,25 @@ def main():
     args = parse_args()
 
     input_dir = args.input_dir
-    output_dir = args.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir: Path = args.output_dir
+
+    output_ecg_folder = output_dir / "ecgs"
+    output_ecg_folder.mkdir(parents=True, exist_ok=True)
+
     target_sampling_rate = int(args.sampling_rate)
 
-    all_files = input_dir.glob("*.mat")
+    all_files = list(input_dir.rglob("*.mat"))
 
-    metas = []
-    for filepath in tqdm(all_files, desc="Preprocessing"):
+    _prprocess = partial(
+        preprocess_file,
+        output_dir=output_ecg_folder,
+        target_sampling_rate=target_sampling_rate,
+    )
 
-        metadata = MetaData(filepath.with_suffix(".hea"))
-        meta = metadata.to_dict()
+    with Pool(processes=12) as pool:
+        metas = list(tqdm(pool.imap(_prprocess, all_files), total=len(all_files)))
 
-        ecg = load_mat(filepath)
-        ecg, method = resample_ecg(ecg, metadata.sampling_rate, target_sampling_rate)
-        ecg = butter_filter(ecg, target_sampling_rate)
-        ecg = zscore_normalize(ecg)
-
-        output_filepath = output_dir / f"{filepath.stem}.pt"
-        torch.save(ecg, output_filepath)
-
-        meta["resampling_method"] = method
-        meta["filepath"] = str(output_filepath)
-        meta["original_filepath"] = str(filepath)
-        metas.append(meta)
-
-    df = pd.DataFrame(metas)
-    df.to_csv(output_dir / "metadata.csv", index=False)
+    save_as_csv(metas, output_dir / "metadata_v2.csv")
 
 
 if __name__ == "__main__":

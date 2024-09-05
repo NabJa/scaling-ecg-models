@@ -29,7 +29,7 @@ def download_file(session, url, local_filename) -> Optional[str]:
         return local_filename
 
     try:
-        with session.get(url, stream=True, timeout=(60, 60)) as r:
+        with session.get(url, stream=True, timeout=(120, 120)) as r:
             r.raise_for_status()
             with open(local_filename, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
@@ -96,7 +96,7 @@ def get_all_files(dataset_urls: List[str], max_workers: int = 10) -> List[str]:
 
 
 def main():
-    max_workers = 100
+    max_workers = 10
     local_base_dir = (
         "/sc-scratch/sc-scratch-gbm-radiomics/ecg/physionet_challenge/training"
     )
