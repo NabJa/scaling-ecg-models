@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from pathlib import Path
 
-from azure.storage.blob import BlobProperties, ContainerClient
+from azure.storage.blob import BlobProperties, BlobServiceClient, ContainerClient
 from tqdm import tqdm
 
 DIRECTORY_PREFIX = {
@@ -33,12 +33,12 @@ def download_blobs_in_directory(
     sas_url: str, directory_prefix: str, target_dir: str, subdirs=False, max_workers=8
 ) -> None:
 
-    container_client = ContainerClient.from_container_url(sas_url)
+    service_client = BlobServiceClient(account_url=sas_url)
+    container_client = service_client.get_container_client(
+        "azureml-blobstore-7209d09f-8ee3-41a4-9ebc-7034bca04b1c"
+    )
 
-    print("Listing blobs...")
     blob_list = get_blob_list(container_client, directory_prefix)
-
-    print(f"Downloading blobs...")
 
     _download_blob = partial(
         download_blob,
@@ -48,8 +48,10 @@ def download_blobs_in_directory(
     )
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        print("Listing blobs...")
         futures = [executor.submit(_download_blob, blob) for blob in blob_list]
 
+        print(f"Downloading blobs...")
         for future in tqdm(as_completed(futures), total=len(futures)):
             future.result()
 
@@ -73,12 +75,15 @@ def main():
 
     args = parser.parse_args()
 
-    assert args.directory_prefix in DIRECTORY_PREFIX, "Invalid directory prefix."
+    assert (
+        args.directory_prefix in DIRECTORY_PREFIX
+    ), "Invalid directory prefix. Must be 'meta' or 'files'."
 
-    sas_url = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+    sas_url = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+
     if sas_url is None:
         raise ValueError(
-            "Environment variable AZURE_STORAGE_CONNECTION_STRING is not set. Do:\nexport AZURE_STORAGE_CONNECTION_STRING='your_sas_url_here'"
+            "Azure Storage Connection String not found. Set as AZURE_STORAGE_CONNECTION_STRING environment variable."
         )
 
     download_blobs_in_directory(
