@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence
 
 import torch
 from einops import rearrange
@@ -9,24 +10,13 @@ from torch.nn import functional as F
 from torchvision.ops.stochastic_depth import StochasticDepth
 
 
-class CNBlockConfig1D:
-    def __init__(
-        self,
-        input_channels: int,
-        out_channels: Optional[int],
-        num_layers: int,
-    ) -> None:
-        self.input_channels = input_channels
-        self.out_channels = out_channels
-        self.num_layers = num_layers
-
-    def __repr__(self) -> str:
-        s = self.__class__.__name__ + "("
-        s += "input_channels={input_channels}"
-        s += ", out_channels={out_channels}"
-        s += ", num_layers={num_layers}"
-        s += ")"
-        return s.format(**self.__dict__)
+@dataclass
+class BlockConfig:
+    input_channels: int
+    out_channels: Optional[int]
+    num_layers: int
+    norm_layer: Optional[Callable[..., nn.Module]] = None
+    activation: Optional[Callable[..., nn.Module]] = None
 
 
 class LayerNorm1D(nn.LayerNorm):
@@ -42,7 +32,58 @@ class LayerNorm1D(nn.LayerNorm):
         return x
 
 
-class CNBlock1D(nn.Module):
+class ResNetBlock(nn.Module):
+    """
+    A ResNet residual block for 1D inputs with two Conv1d layers, BatchNorm, and ReLU activation.
+    """
+
+    def __init__(
+        self,
+        input_channels,
+        activation=None,
+        norm_layer=None,
+        layer_scale=None,
+        stochastic_depth_prob=None,
+    ):
+        super().__init__()
+
+        self.layer_scale = layer_scale
+        if layer_scale is not None:
+            self.layer_scale = nn.Parameter(torch.ones(input_channels, 1) * layer_scale)
+
+        self.stochastic_depth_prob = stochastic_depth_prob
+        if stochastic_depth_prob is not None:
+            self.stochastic_depth = StochasticDepth(stochastic_depth_prob, "row")
+
+        self.activation = activation if activation is not None else nn.ReLU
+        self.norm = norm_layer if norm_layer is not None else nn.BatchNorm1d
+
+        self.block = nn.Sequential(
+            nn.Conv1d(input_channels, input_channels, kernel_size=3, padding=1),
+            self.norm(input_channels),
+            self.activation(),
+            nn.Conv1d(input_channels, input_channels, kernel_size=3, padding=1),
+            self.norm(input_channels),
+        )
+
+    def forward(self, input: Tensor) -> Tensor:
+        residual = input
+
+        out = self.block(input)
+
+        if self.layer_scale is not None:
+            out = self.layer_scale * out
+
+        if self.stochastic_depth_prob is not None:
+            out = self.stochastic_depth(out)
+
+        out += residual
+        out = self.activation()(out)
+
+        return out
+
+
+class ConvNextBlock(nn.Module):
     """
     A ConvNeXt residual block for 1D inputs with depthwise convolution, LayerNorm, LayerScale,
     GELU activation, inverted bottlneck, and stochastic depth regularization.
@@ -50,67 +91,105 @@ class CNBlock1D(nn.Module):
 
     def __init__(
         self,
-        dim,
-        layer_scale: float,
-        stochastic_depth_prob: float,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
-        bottleneck_inversion_factor: int = 4,
+        input_channels,
+        activation=None,
+        norm_layer=None,
+        layer_scale=None,
+        stochastic_depth_prob=None,
+        bottleneck_inversion_factor=4,
     ) -> None:
         super().__init__()
+
+        self.layer_scale = layer_scale
+        if layer_scale is not None:
+            self.layer_scale = nn.Parameter(torch.ones(input_channels, 1) * layer_scale)
+
+        self.stochastic_depth_prob = stochastic_depth_prob
+        if stochastic_depth_prob is not None:
+            self.stochastic_depth = StochasticDepth(stochastic_depth_prob, "row")
+
         if norm_layer is None:
             norm_layer = partial(nn.LayerNorm, eps=1e-6)
 
-        inverted_bottleneck_dim = dim * bottleneck_inversion_factor
+        if activation is None:
+            activation = nn.GELU
+
+        inverted_bottleneck_dim = input_channels * bottleneck_inversion_factor
 
         self.block = nn.Sequential(
-            nn.Conv1d(dim, dim, kernel_size=7, padding=3, groups=dim, bias=True),
-            Rearrange("N S C -> N C S"),
-            norm_layer(dim),
-            nn.Linear(
-                in_features=dim,
-                out_features=inverted_bottleneck_dim,
-                bias=True,
-            ),
-            nn.GELU(),
-            nn.Linear(
-                in_features=inverted_bottleneck_dim,
-                out_features=dim,
+            nn.Conv1d(
+                input_channels,
+                input_channels,
+                kernel_size=7,
+                padding=3,
+                groups=input_channels,
                 bias=True,
             ),
             Rearrange("N C S -> N S C"),
+            norm_layer(input_channels),
+            nn.Linear(
+                in_features=input_channels,
+                out_features=inverted_bottleneck_dim,
+                bias=True,
+            ),
+            activation(),
+            nn.Linear(
+                in_features=inverted_bottleneck_dim,
+                out_features=input_channels,
+                bias=True,
+            ),
+            Rearrange("N S C -> N C S"),
         )
-        self.layer_scale = nn.Parameter(torch.ones(dim, 1) * layer_scale)
-        self.stochastic_depth = StochasticDepth(stochastic_depth_prob, "row")
 
     def forward(self, input: Tensor) -> Tensor:
-        result = self.layer_scale * self.block(input)
-        result = self.stochastic_depth(result)
+        result = self.block(input)
+        if self.layer_scale is not None:
+            result = self.layer_scale * result
+        if self.stochastic_depth_prob is not None:
+            result = self.stochastic_depth(result)
         result += input
         return result
 
 
-class ConvNeXt1D(nn.Module):
-    """ConvNeXt1D model for ECG data classification."""
+def increase_stochastic_depth_prob(
+    stochastic_depth_prob, stage_block_id, total_stage_blocks
+):
+    """Helper function to linearly increase the stochastic depth probability based on the stage block ID."""
+    if stochastic_depth_prob is None:
+        return None
+    return stochastic_depth_prob * stage_block_id / (total_stage_blocks - 1.0)
+
+
+class EcgClassifier(nn.Module):
+    """Model for ECG classification."""
 
     def __init__(
         self,
-        block_setting: List[CNBlockConfig1D],
-        stochastic_depth_prob: float = 0.0,
-        layer_scale: float = 1e-6,
+        block_setting: List[BlockConfig],
         channels=12,
         num_classes: int = 5,
         block: Optional[Callable[..., nn.Module]] = None,
+        stochastic_depth_prob: Optional[float] = None,
+        layer_scale: Optional[float] = None,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
+        initial_kernel_size: int = 4,
+        initial_stride: int = 4,
+        activation: Optional[Callable[..., nn.Module]] = None,
+        final_norm_layer: Optional[Callable[..., nn.Module]] = None,
     ) -> None:
         """
         Args:
-            block_setting: List of CNBlockConfig1D for each stage.
-            stochastic_depth_prob: Probability of dropping out a block. The probability is linearly increased.
-            layer_scale: Layer scale for LayerScale module.
+            block_setting: List of BlockConfig instances defining the model architecture.
             channels: Number of input channels.
             num_classes: Number of output classes.
-            block: Block module to use. Defaults to CNBlock1D.
-            norm_layer: Normalization layer to use. Defaults to LayerNorm1D.
+            block: Block class to use for the model.
+            stochastic_depth_prob: Probability of applying stochastic depth regularization.
+            layer_scale: Scaling factor for the layer output.
+            norm_layer: Normalization layer to use in the model.
+            initial_kernel_size: Kernel size for the initial convolutional layer.
+            initial_stride: Stride for the initial convolutional layer.
+            activation: Activation function to use in the model.
+            final_norm_layer: Normalization layer to use in the final classifier.
         """
         super().__init__()
 
@@ -118,44 +197,45 @@ class ConvNeXt1D(nn.Module):
             raise ValueError("The block_setting should not be empty")
         elif not (
             isinstance(block_setting, Sequence)
-            and all([isinstance(s, CNBlockConfig1D) for s in block_setting])
+            and all([isinstance(s, BlockConfig) for s in block_setting])
         ):
             raise TypeError("The block_setting should be List[CNBlockConfig1D]")
 
         if block is None:
-            block = CNBlock1D
+            block = ConvNextBlock
 
-        if norm_layer is None:
-            norm_layer = partial(LayerNorm1D, eps=1e-6)
+        if final_norm_layer is None:
+            final_norm_layer = LayerNorm1D
 
         layers: List[nn.Module] = []
-
         # Stem
         firstconv_output_channels = block_setting[0].input_channels
         layers.append(
             nn.Conv1d(
                 channels,
                 firstconv_output_channels,
-                kernel_size=4,
-                stride=4,
-                padding=0,
-                bias=True,
+                kernel_size=initial_kernel_size,
+                stride=initial_stride,
             )
         )
 
+        # Blocks
         total_stage_blocks = sum(cnf.num_layers for cnf in block_setting)
         stage_block_id = 0
         for cnf in block_setting:
-            # Bottlenecks
             stage: List[nn.Module] = []
             for _ in range(cnf.num_layers):
-                # adjust stochastic depth probability based on the depth of the stage block
-                sd_prob = (
-                    stochastic_depth_prob * stage_block_id / (total_stage_blocks - 1.0)
+                sd_prob = increase_stochastic_depth_prob(
+                    stochastic_depth_prob, stage_block_id, total_stage_blocks
                 )
-                stage.append(block(cnf.input_channels, layer_scale, sd_prob))
+                stage.append(
+                    block(
+                        cnf.input_channels, activation, norm_layer, layer_scale, sd_prob
+                    )
+                )
                 stage_block_id += 1
             layers.append(nn.Sequential(*stage))
+
             if cnf.out_channels is not None:
                 # Downsampling
                 layers.append(
@@ -180,7 +260,7 @@ class ConvNeXt1D(nn.Module):
             else lastblock.input_channels
         )
         self.classifier = nn.Sequential(
-            norm_layer(lastconv_output_channels),
+            final_norm_layer(lastconv_output_channels),
             nn.Flatten(1),
             nn.Linear(lastconv_output_channels, num_classes),
         )
@@ -198,47 +278,44 @@ class ConvNeXt1D(nn.Module):
         return x
 
 
-def convnext1d_tiny(**kwargs: Any) -> ConvNeXt1D:
-    return ConvNeXt1D(
-        [
-            CNBlockConfig1D(input_channels=24, out_channels=48, num_layers=3),
-            CNBlockConfig1D(input_channels=48, out_channels=96, num_layers=3),
-            CNBlockConfig1D(input_channels=96, out_channels=None, num_layers=3),
-        ],
-        **kwargs,
+def resnet18(**kwargs):
+    """
+    This is a basic ResNet-18 model configuration. Arguments are passed to the EcgClassifier class.
+    It allows for easy variation of configuration parameters like activation function, normalization layer, etc.
+    """
+    block_settings = [
+        BlockConfig(input_channels=64, out_channels=64, num_layers=2),
+        BlockConfig(input_channels=64, out_channels=128, num_layers=2),
+        BlockConfig(input_channels=128, out_channels=256, num_layers=2),
+        BlockConfig(input_channels=256, out_channels=512, num_layers=2),
+    ]
+    return EcgClassifier(block_settings, **kwargs)
+
+
+def get_classifier(depth, width, width_grow_rate=2, **kwargs):
+    """
+    Get a EcgClassifier with specified depth and width.
+
+    Args:
+        depth: Number of layers in the model.
+        width: Number of channels in the model.
+        **kwargs: Additional keyword arguments for the model.
+
+    Returns:
+        A EcgClassifier with the specified depth and width.
+    """
+
+    block_settings = []
+    next_width = width
+    for _ in range(depth - 1):
+        next_width *= width_grow_rate
+        block_settings.append(
+            BlockConfig(input_channels=width, out_channels=next_width, num_layers=2)
+        )
+
+    # Set output channels to None for the last block
+    block_settings.apend(
+        BlockConfig(input_channels=next_width, out_channels=None, num_layers=2)
     )
 
-
-def convnext1d_small(**kwargs: Any) -> ConvNeXt1D:
-    return ConvNeXt1D(
-        [
-            CNBlockConfig1D(input_channels=64, out_channels=96, num_layers=3),
-            CNBlockConfig1D(input_channels=96, out_channels=128, num_layers=3),
-            CNBlockConfig1D(input_channels=128, out_channels=256, num_layers=3),
-            CNBlockConfig1D(input_channels=256, out_channels=None, num_layers=3),
-        ],
-        **kwargs,
-    )
-
-
-def convnext1d_large(**kwargs: Any) -> ConvNeXt1D:
-    return ConvNeXt1D(
-        [
-            CNBlockConfig1D(input_channels=96, out_channels=128, num_layers=3),
-            CNBlockConfig1D(input_channels=128, out_channels=256, num_layers=3),
-            CNBlockConfig1D(input_channels=256, out_channels=512, num_layers=3),
-            CNBlockConfig1D(input_channels=512, out_channels=None, num_layers=3),
-        ],
-        **kwargs,
-    )
-
-
-def get_convnext(name: str, **kwargs: Any) -> ConvNeXt1D:
-    if name == "tiny":
-        return convnext1d_tiny(**kwargs)
-    elif name == "small":
-        return convnext1d_small(**kwargs)
-    elif name == "large":
-        return convnext1d_large(**kwargs)
-    else:
-        raise ValueError(f"Unknown ConvNeXt model name: {name}")
+    return EcgClassifier(block_settings, **kwargs)
