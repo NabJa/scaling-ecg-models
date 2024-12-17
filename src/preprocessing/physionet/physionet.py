@@ -20,8 +20,9 @@ import numpy as np
 import pandas as pd
 import torch
 from scipy.io import loadmat
-from src.preprocessing.preprocess import butter_filter, resample_ecg, zscore_normalize
 from tqdm import tqdm
+
+from src.preprocessing.preprocess import butter_filter, resample_ecg, zscore_normalize
 
 DX_MAP = pd.read_csv(
     "https://raw.githubusercontent.com/physionetchallenges/physionetchallenges.github.io/master/2020/Dx_map.csv"
@@ -90,7 +91,7 @@ def preprocess_file(
     meta["filepath"] = str(output_filepath)
     meta["original_filepath"] = str(filepath)
 
-    torch.save(ecg, output_filepath)
+    torch.save(torch.tensor(ecg), output_filepath)
     return meta
 
 
@@ -139,7 +140,7 @@ def main():
     with Pool(processes=12) as pool:
         metas = list(tqdm(pool.imap(_prprocess, all_files), total=len(all_files)))
 
-    save_as_csv(metas, output_dir / "metadata_v2.csv")
+    save_as_csv(metas, output_dir / "metadata.csv")
 
 
 if __name__ == "__main__":
