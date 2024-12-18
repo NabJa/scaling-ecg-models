@@ -60,7 +60,7 @@ class GridGenerator:
         start, end, step, distribution = value
 
         if distribution == Distribution.DOUBLE:
-         return generate_doubling_space(start, end)
+            return generate_doubling_space(start, end)
 
         if distribution == Distribution.LOG:
             num = int((end-start)/step) + 1
