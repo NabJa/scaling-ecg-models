@@ -245,12 +245,40 @@ class Compose:
         return signal
 
 
-BASIC_TRANSFORM = Compose(
-    RandomCropOrPad(1000),
-    TimeWarping(max_warp=0.2),
-    AmplitudeScaling(min_scale=0.5, max_scale=2.0),
-    GaussianNoise(mean=0.0, std=0.01),
-    RandomWandering(max_amplitude=1.0, frequency_range=(0.5, 2.0)),
-    TimeMasking(max_mask_duration=50),
-    RandomMaskChannels(mask_prob=0.5),
-)
+class BasicECGAugmentation:
+    def __init__(
+        self,
+        crop_size=1000,
+        max_warp=0.2,
+        min_scale=0.5,
+        max_scale=2.0,
+        noise_std=0.01,
+        max_amplitude=1.0,
+        frequency_range=(0.5, 2.0),
+        max_mask_duration=50,
+        mask_prob=0.5,
+    ):
+        """
+        Args:
+            crop_size: Crops or pads to this size. Defaults to 1000.
+            max_warp: Warps time by this percentage. Defaults to 0.2.
+            min_scale: Amplitude scaling. Defaults to 0.5.
+            max_scale: Amplitude scaling. Defaults to 2.0.
+            noise_std: Gaussian noise std. Defaults to 0.01.
+            max_amplitude: Amplitude of random wandering. Defaults to 1.0.
+            frequency_range: Frequence range of random wandering. Defaults to (0.5, 2.0).
+            max_mask_duration: Max duration of zero masking. Defaults to 50.
+            mask_prob: Probability to completely mask a lead (channel). Defaults to 0.5.
+        """
+        self.transform = Compose(
+            RandomCropOrPad(crop_size),
+            TimeWarping(max_warp),
+            AmplitudeScaling(min_scale, max_scale),
+            GaussianNoise(std=noise_std),
+            RandomWandering(max_amplitude, frequency_range),
+            TimeMasking(max_mask_duration),
+            RandomMaskChannels(mask_prob),
+        )
+
+    def __call__(self, signal):
+        return self.transform(signal)
