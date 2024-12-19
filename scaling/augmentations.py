@@ -22,6 +22,10 @@ class RandomAugmentation:
         """Generates a random integer between `low` and `high - 1`."""
         return torch.randint(low, high, (1,), generator=self.rng).item()
 
+    def random_mask(self, p, shape):
+        """Generates a random mask with probability `p`."""
+        return (torch.rand(shape, generator=self.rng) > p).int()
+
 
 class RandomCropOrPad(RandomAugmentation):
     """Crops or pads the ECG signal to a target length."""
@@ -71,7 +75,7 @@ class RandomMaskChannels(RandomAugmentation):
         Returns:
             torch.Tensor: Signal with masked channels.
         """
-        mask = torch.rand(signal.shape[0], generator=self.rng) > self.mask_prob
+        mask = self.random_mask(self.mask_prob, signal.shape[0])
 
         masked = signal * mask.unsqueeze(1)
 
