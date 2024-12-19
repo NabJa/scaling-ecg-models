@@ -172,7 +172,6 @@ class PhysionetDM(LightningDataModule):
         remove_quivalent_labels=True,
         train_transform=None,
         val_transform=None,
-        num_workers=4,
     ):
         super().__init__()
 
@@ -181,7 +180,6 @@ class PhysionetDM(LightningDataModule):
         self.meta_file_path = meta_file_path
         self.batch_size = batch_size
         self.remove_quivalent_labels = remove_quivalent_labels
-        self.num_workers = num_workers
 
         self.valid_fold = fold
 
@@ -205,35 +203,18 @@ class PhysionetDM(LightningDataModule):
             fold=self.valid_fold,
             remove_quivalent_labels=self.remove_quivalent_labels,
         )
-        self.test = PhysioNet(
-            self.meta_file_path,
-            ecg_transform=None,
-            fold=self.test_fold,
-            remove_quivalent_labels=self.remove_quivalent_labels,
-        )
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
             self.train,
             batch_size=self.batch_size,
-            num_workers=self.num_workers,
             shuffle=True,
             drop_last=True,
-            pin_memory=True,
         )
 
     def val_dataloader(self):
         return torch.utils.data.DataLoader(
             self.valid,
             batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            shuffle=False,
-        )
-
-    def test_dataloader(self):
-        return torch.utils.data.DataLoader(
-            self.test,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
             shuffle=False,
         )

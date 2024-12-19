@@ -68,7 +68,7 @@ def butter_filter(
 def zscore_normalize(ecg: np.ndarray, clip: Optional[int] = None) -> np.ndarray:
     mean = ecg.mean(axis=-1, keepdims=True)
     std = ecg.std(axis=-1, keepdims=True)
-    z_ecg = (ecg - mean) / std
+    z_ecg = (ecg - mean) / (std + 1e-6)
     if clip:
         z_ecg = np.clip(z_ecg, -clip, clip)
     return z_ecg
