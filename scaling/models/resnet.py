@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional, Type, Union
+from typing import Callable, List, Optional, Type, Union
 
 import torch
 import torch.nn as nn
@@ -270,52 +270,3 @@ class ResNet(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
-
-
-def resnet18(**kwargs) -> ResNet:
-    return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
-
-
-def resnet50(**kwargs) -> ResNet:
-    return ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
-
-
-def resnet101(**kwargs) -> ResNet:
-    return ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
-
-
-def resnext18(**kwargs) -> ResNet:
-    groups = kwargs.pop("groups", 32)
-    width_per_group = kwargs.pop("width_per_group", 4)
-
-    return ResNet(
-        Bottleneck,
-        [2, 2, 2, 2],
-        groups=groups,
-        width_per_group=width_per_group,
-        **kwargs,
-    )
-
-
-def resnext50(**kwargs) -> ResNet:
-    groups = kwargs.pop("groups", 32)
-    width_per_group = kwargs.pop("width_per_group", 4)
-    return ResNet(
-        Bottleneck,
-        [3, 4, 6, 3],
-        groups=groups,
-        width_per_group=width_per_group,
-        **kwargs,
-    )
-
-
-def resnext101(**kwargs) -> ResNet:
-    groups = kwargs.pop("groups", 32)
-    width_per_group = kwargs.pop("width_per_group", 8)
-    return ResNet(
-        Bottleneck,
-        [3, 4, 23, 3],
-        groups=groups,
-        width_per_group=width_per_group,
-        **kwargs,
-    )
