@@ -22,7 +22,11 @@ import torch
 from scipy.io import loadmat
 from tqdm import tqdm
 
-from src.preprocessing.preprocess import butter_filter, resample_ecg, zscore_normalize
+from scaling.preprocessing.preprocess import (
+    butter_filter,
+    resample_ecg,
+    zscore_normalize,
+)
 
 DX_MAP = pd.read_csv(
     "https://raw.githubusercontent.com/physionetchallenges/physionetchallenges.github.io/master/2020/Dx_map.csv"
