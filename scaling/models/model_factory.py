@@ -1,6 +1,43 @@
 from scaling.models.convnext import CNBlockConfig, ConvNeXt
+from scaling.models.getemed import ECGVisionTransformer
 from scaling.models.resnet import BasicBlock, Bottleneck, ResNet
 from scaling.models.vit import ECGViT
+
+
+def getemed_small(**kwargs) -> ECGVisionTransformer:
+    return ECGVisionTransformer(
+        dim_model=128,
+        num_heads=4,
+        num_encoder_layers=2,
+        dim_feedforward=256,
+        patch_size=64,
+        dropout=0.05,
+        **kwargs,
+    )
+
+
+def getemed_base(**kwargs) -> ECGVisionTransformer:
+    return ECGVisionTransformer(
+        dim_model=256,
+        num_heads=4,
+        num_encoder_layers=6,
+        dim_feedforward=256,
+        patch_size=64,
+        dropout=0.15,
+        **kwargs,
+    )
+
+
+def getemed_large(**kwargs) -> ECGVisionTransformer:
+    return ECGVisionTransformer(
+        dim_model=512,
+        num_heads=16,
+        num_encoder_layers=6,
+        dim_feedforward=1024,
+        patch_size=64,
+        dropout=0.15,
+        **kwargs,
+    )
 
 
 def convnext_mini(**kwargs) -> ConvNeXt:
@@ -109,8 +146,8 @@ def resnext101(**kwargs) -> ResNet:
 
 
 def vit_tiny(**kwargs) -> ECGViT:
-    seq_len = kwargs.pop("seq_len", 992)
-    patch_size = kwargs.pop("patch_size", 32)
+    seq_len = kwargs.pop("seq_len", 1024)
+    patch_size = kwargs.pop("patch_size", 64)
     return ECGViT(
         seq_len=seq_len,
         patch_size=patch_size,
@@ -124,8 +161,8 @@ def vit_tiny(**kwargs) -> ECGViT:
 
 
 def vit_small(**kwargs) -> ECGViT:
-    seq_len = kwargs.pop("seq_len", 992)
-    patch_size = kwargs.pop("patch_size", 32)
+    seq_len = kwargs.pop("seq_len", 1024)
+    patch_size = kwargs.pop("patch_size", 64)
     return ECGViT(
         seq_len=seq_len,
         patch_size=patch_size,
@@ -139,8 +176,8 @@ def vit_small(**kwargs) -> ECGViT:
 
 
 def vit_base(**kwargs) -> ECGViT:
-    seq_len = kwargs.pop("seq_len", 992)
-    patch_size = kwargs.pop("patch_size", 32)
+    seq_len = kwargs.pop("seq_len", 1024)
+    patch_size = kwargs.pop("patch_size", 64)
     return ECGViT(
         seq_len=seq_len,
         patch_size=patch_size,
@@ -154,8 +191,8 @@ def vit_base(**kwargs) -> ECGViT:
 
 
 def vit_large(**kwargs) -> ECGViT:
-    seq_len = kwargs.pop("seq_len", 992)
-    patch_size = kwargs.pop("patch_size", 32)
+    seq_len = kwargs.pop("seq_len", 1024)
+    patch_size = kwargs.pop("patch_size", 64)
     return ECGViT(
         seq_len=seq_len,
         patch_size=patch_size,
@@ -184,4 +221,7 @@ MODELS = {
     "vit_small": vit_small,
     "vit_base": vit_base,
     "vit_large": vit_large,
+    "getemed_small": getemed_small,
+    "getemed_base": getemed_base,
+    "getemed_large": getemed_large,
 }
