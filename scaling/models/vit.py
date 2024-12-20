@@ -77,32 +77,37 @@ class RMSNorm(nn.Module):
 
 
 class Attend(nn.Module):
-    def __init__(self, dropout=0.0, flash=False, scale=None):
+    def __init__(self, dropout=0.0, flash=False, scale=None, verbose=False):
         super().__init__()
         self.scale = scale
         self.dropout = dropout
         self.attn_dropout = nn.Dropout(dropout)
 
         self.flash = flash
-        if not flash:
-            return
 
+        self.determine_attention_type(verbose)
+
+    def determine_attention_type(self, verbose=False):
+        """Determine the type of attention to use based on the hardware architecture"""
         self.use_flash = False
         if not torch.cuda.is_available():
-            print_once("No GPU detected, using math or mem efficient attention")
+            if verbose:
+                print_once("No GPU detected, using math or mem efficient attention")
             return
 
         device_properties = torch.cuda.get_device_properties(torch.device("cuda"))
 
         if device_properties.major == 8 and device_properties.minor == 0:
-            print_once(
-                "A100 GPU detected, using flash attention if input tensor is on cuda"
-            )
+            if verbose:
+                print_once(
+                    "A100 GPU detected, using flash attention if input tensor is on cuda"
+                )
             self.use_flash = True
         else:
-            print_once(
-                "Non-A100 GPU detected, using math or mem efficient attention if input tensor is on cuda"
-            )
+            if verbose:
+                print_once(
+                    "Non-A100 GPU detected, using math or mem efficient attention if input tensor is on cuda"
+                )
 
     def flash_attn(self, q, k, v):
         if exists(self.scale):
@@ -156,16 +161,22 @@ class Attend(nn.Module):
 
 class Attention(nn.Module):
     def __init__(
-        self, dim, heads=8, dim_head=64, dropout=0.0, rotary_embed=None, flash=True
+        self,
+        dim,
+        heads=8,
+        dim_head=64,
+        dropout=0.0,
+        rotary_embed=None,
+        flash=True,
+        verbose=False,
     ):
         super().__init__()
         self.heads = heads
         self.scale = dim_head**-0.5
         dim_inner = heads * dim_head
-
         self.rotary_embed = rotary_embed
 
-        self.attend = Attend(flash=flash, dropout=dropout)
+        self.attend = Attend(flash=flash, dropout=dropout, verbose=verbose)
 
         self.norm = RMSNorm(dim)
         self.to_qkv = nn.Linear(dim, dim_inner * 3, bias=False)
@@ -206,6 +217,7 @@ class Transformer(nn.Module):
         mlp_mult,
         rotary_embed: Optional[RotaryEmbedding] = None,
         flash=True,
+        verbose=False,
     ):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
@@ -223,6 +235,7 @@ class Transformer(nn.Module):
                             dim_head=dim_head,
                             rotary_embed=self.rotary_embed,
                             flash=self.flash,
+                            verbose=verbose,
                         ),
                         FeedForward(dim, mlp_mult),
                     ]
@@ -251,6 +264,7 @@ class ECGViT(nn.Module):
         dim_head=32,
         rotary_embed=False,
         flash=True,
+        verbose=False,
     ):
         """
         Args:
@@ -265,6 +279,7 @@ class ECGViT(nn.Module):
             dim_head: dimension of the head.
             rotary_embed: whether to use rotary embeddings. If False, sinusoidal embeddings are used.
             flash: whether to use flash attention.
+            verbose: hardware architecture agnostic print about what type of attention is used.
         """
         super().__init__()
 
@@ -283,7 +298,7 @@ class ECGViT(nn.Module):
         )
 
         self.transformer = Transformer(
-            dim, depth, heads, dim_head, mlp_mult, self.rotary_embed, flash
+            dim, depth, heads, dim_head, mlp_mult, self.rotary_embed, flash, verbose
         )
 
         self.linear_head = nn.Linear(dim, num_classes)
