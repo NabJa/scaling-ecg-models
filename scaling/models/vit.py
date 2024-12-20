@@ -1,39 +1,14 @@
-from functools import wraps
 from typing import Optional
 
 import torch
-import torch.nn.functional as F
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from rotary_embedding_torch import RotaryEmbedding
-from torch import einsum, nn
-from torch.nn.attention import SDPBackend, sdpa_kernel
-from torch.nn.functional import scaled_dot_product_attention
+from torch import nn
 
 
 def exists(val):
     return val is not None
-
-
-def default(v, d):
-    return v if exists(v) else d
-
-
-def once(fn):
-    called = False
-
-    @wraps(fn)
-    def inner(x):
-        nonlocal called
-        if called:
-            return
-        called = True
-        return fn(x)
-
-    return inner
-
-
-print_once = once(print)
 
 
 def posemb_sincos_1d(patches, temperature=10000, dtype=torch.float32):
@@ -50,113 +25,20 @@ def posemb_sincos_1d(patches, temperature=10000, dtype=torch.float32):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, mult=4, dropout=0.0):
+    def __init__(self, dim, mlp_mult, dropout=0.0):
         super().__init__()
-        dim_inner = int(dim * mult)
+        hidden_dim = int(dim * mlp_mult)
         self.net = nn.Sequential(
-            RMSNorm(dim),
-            nn.Linear(dim, dim_inner),
+            nn.LayerNorm(dim),
+            nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(dim_inner, dim),
+            nn.Linear(hidden_dim, dim),
             nn.Dropout(dropout),
         )
 
     def forward(self, x):
         return self.net(x)
-
-
-class RMSNorm(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.scale = dim**0.5
-        self.gamma = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x):
-        return F.normalize(x, dim=-1) * self.scale * self.gamma
-
-
-class Attend(nn.Module):
-    def __init__(self, dropout=0.0, flash=False, scale=None, verbose=False):
-        super().__init__()
-        self.scale = scale
-        self.dropout = dropout
-        self.attn_dropout = nn.Dropout(dropout)
-
-        self.flash = flash
-
-        self.determine_attention_type(verbose)
-
-    def determine_attention_type(self, verbose=False):
-        """Determine the type of attention to use based on the hardware architecture"""
-        self.use_flash = False
-        if not torch.cuda.is_available():
-            if verbose:
-                print_once("No GPU detected, using math or mem efficient attention")
-            return
-
-        device_properties = torch.cuda.get_device_properties(torch.device("cuda"))
-
-        if device_properties.major == 8 and device_properties.minor == 0:
-            if verbose:
-                print_once(
-                    "A100 GPU detected, using flash attention if input tensor is on cuda"
-                )
-            self.use_flash = True
-        else:
-            if verbose:
-                print_once(
-                    "Non-A100 GPU detected, using math or mem efficient attention if input tensor is on cuda"
-                )
-
-    def flash_attn(self, q, k, v):
-        if exists(self.scale):
-            default_scale = q.shape[-1] ** -0.5
-            q = q * (self.scale / default_scale)
-
-        if self.use_flash:
-            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
-                return scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.dropout if self.training else 0.0
-                )
-        else:
-            with sdpa_kernel([SDPBackend.MATH, SDPBackend.EFFICIENT_ATTENTION]):
-                return scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.dropout if self.training else 0.0
-                )
-
-        return out
-
-    def forward(self, q, k, v):
-        """
-        einstein notation
-        b - batch
-        h - heads
-        n, i, j - sequence length (base sequence length, source, target)
-        d - feature dimension
-        """
-
-        q_len, k_len, device = q.shape[-2], k.shape[-2], q.device
-
-        scale = default(self.scale, q.shape[-1] ** -0.5)
-
-        if self.flash:
-            return self.flash_attn(q, k, v)
-
-        # similarity
-
-        sim = einsum(f"b h i d, b h j d -> b h i j", q, k) * scale
-
-        # attention
-
-        attn = sim.softmax(dim=-1)
-        attn = self.attn_dropout(attn)
-
-        # aggregate values
-
-        out = einsum(f"b h i j, b h j d -> b h i d", attn, v)
-
-        return out
 
 
 class Attention(nn.Module):
@@ -165,66 +47,53 @@ class Attention(nn.Module):
         dim,
         heads=8,
         dim_head=64,
+        rotary_embed: Optional[RotaryEmbedding] = None,
         dropout=0.0,
-        rotary_embed=None,
-        flash=True,
-        verbose=False,
     ):
         super().__init__()
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
+
         self.heads = heads
         self.scale = dim_head**-0.5
-        dim_inner = heads * dim_head
+
+        self.norm = nn.LayerNorm(dim)
+        self.attend = nn.Softmax(dim=-1)
+        self.dropout = nn.Dropout(dropout)
+
         self.rotary_embed = rotary_embed
 
-        self.attend = Attend(flash=flash, dropout=dropout, verbose=verbose)
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
 
-        self.norm = RMSNorm(dim)
-        self.to_qkv = nn.Linear(dim, dim_inner * 3, bias=False)
-
-        self.to_gates = nn.Linear(dim, heads)
-
-        self.to_out = nn.Sequential(
-            nn.Linear(dim_inner, dim, bias=False), nn.Dropout(dropout)
+        self.to_out = (
+            nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout))
+            if project_out
+            else nn.Identity()
         )
 
     def forward(self, x):
         x = self.norm(x)
-
-        q, k, v = rearrange(
-            self.to_qkv(x), "b n (qkv h d) -> qkv b h n d", qkv=3, h=self.heads
-        )
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), qkv)
 
         if exists(self.rotary_embed):
             q = self.rotary_embed.rotate_queries_or_keys(q)
             k = self.rotary_embed.rotate_queries_or_keys(k)
 
-        out = self.attend(q, k, v)
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
 
-        gates = self.to_gates(x)
-        out = out * rearrange(gates, "b n h -> b h n 1").sigmoid()
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
 
+        out = torch.matmul(attn, v)
         out = rearrange(out, "b h n d -> b n (h d)")
         return self.to_out(out)
 
 
 class Transformer(nn.Module):
-    def __init__(
-        self,
-        dim,
-        depth,
-        heads,
-        dim_head,
-        mlp_mult,
-        rotary_embed: Optional[RotaryEmbedding] = None,
-        flash=True,
-        verbose=False,
-    ):
+    def __init__(self, dim, depth, heads, dim_head, mlp_mult, rotary_embed, dropout):
         super().__init__()
-        self.norm = nn.LayerNorm(dim)
         self.layers = nn.ModuleList([])
-        self.rotary_embed = rotary_embed
-        self.flash = flash
-
         for _ in range(depth):
             self.layers.append(
                 nn.ModuleList(
@@ -233,11 +102,10 @@ class Transformer(nn.Module):
                             dim,
                             heads=heads,
                             dim_head=dim_head,
-                            rotary_embed=self.rotary_embed,
-                            flash=self.flash,
-                            verbose=verbose,
+                            rotary_embed=rotary_embed,
+                            dropout=dropout,
                         ),
-                        FeedForward(dim, mlp_mult),
+                        FeedForward(dim, mlp_mult, dropout=dropout),
                     ]
                 )
             )
@@ -246,7 +114,7 @@ class Transformer(nn.Module):
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
-        return self.norm(x)
+        return x
 
 
 class ECGViT(nn.Module):
@@ -263,8 +131,7 @@ class ECGViT(nn.Module):
         channels=12,
         dim_head=32,
         rotary_embed=False,
-        flash=True,
-        verbose=False,
+        dropout=0.0,
     ):
         """
         Args:
@@ -278,8 +145,7 @@ class ECGViT(nn.Module):
             channels: number of channels.
             dim_head: dimension of the head.
             rotary_embed: whether to use rotary embeddings. If False, sinusoidal embeddings are used.
-            flash: whether to use flash attention.
-            verbose: hardware architecture agnostic print about what type of attention is used.
+            dropout: dropout rate.
         """
         super().__init__()
 
@@ -298,7 +164,7 @@ class ECGViT(nn.Module):
         )
 
         self.transformer = Transformer(
-            dim, depth, heads, dim_head, mlp_mult, self.rotary_embed, flash, verbose
+            dim, depth, heads, dim_head, mlp_mult, self.rotary_embed, dropout=dropout
         )
 
         self.linear_head = nn.Linear(dim, num_classes)
@@ -307,7 +173,7 @@ class ECGViT(nn.Module):
         x = self.to_patch_embedding(series)
 
         # Add class token
-        b, n, _ = x.shape
+        b, _, _ = x.shape
         cls_tokens = repeat(self.cls_token, "() n d -> b n d", b=b)
         x = torch.cat((cls_tokens, x), dim=1)
 
