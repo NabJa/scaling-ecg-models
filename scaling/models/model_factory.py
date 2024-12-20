@@ -1,7 +1,61 @@
+from enum import Enum
+from typing import Union
+
+from lightning import LightningModule
+from torch import nn
+
+from scaling.loss import AsymmetricLoss
 from scaling.models.convnext import CNBlockConfig, ConvNeXt
 from scaling.models.getemed import ECGVisionTransformer
 from scaling.models.resnet import BasicBlock, Bottleneck, ResNet
 from scaling.models.vit import ECGViT
+
+
+class AvailableLoss(Enum):
+    BCE = nn.BCEWithLogitsLoss()
+    ASL = AsymmetricLoss()
+
+
+class LitModel(LightningModule):
+    def __init__(
+        self,
+        model_name: str = "resnet18",
+        loss_fn: Union[AvailableLoss, str] = "BCE",
+        **model_kwargs
+    ):
+        """
+        Args:
+            model_name (str): Name of the model to use.
+            loss_fn (AvailableLoss): Loss function to use.
+            init_lr (float, optional): Initial learning rate. Defaults to 1e-3.
+            weight_decay (float, optional): Weight decay. Defaults to 0.01.
+            lr_decay_gamma (float, optional): Learning rate decay factor for ExponentialLR. Defaults to 0.95.
+        """
+        super().__init__()
+        self.loss_fn = (
+            AvailableLoss[loss_fn].value if isinstance(loss_fn, str) else loss_fn.value
+        )
+        self.save_hyperparameters()
+        self.model: nn.Module = MODELS[model_name](**model_kwargs)
+
+    def forward(self, x):
+        return self.model(x)
+
+    def step(self, batch):
+        x, y = batch
+        y_hat = self.model(x)
+        loss = self.loss_fn(y_hat, y)
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        loss = self.step(batch)
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.step(batch)
+        self.log("val_loss", loss)
+        return loss
 
 
 def getemed_small(**kwargs) -> ECGVisionTransformer:

@@ -1,3 +1,5 @@
+from typing import Optional, Tuple
+
 import torch
 import torch.nn.functional as F
 
@@ -249,40 +251,56 @@ class Compose:
         return signal
 
 
-class BasicECGAugmentation:
+class ECGAugmentation:
     def __init__(
         self,
-        crop_size=1000,
-        max_warp=0.2,
-        min_scale=0.5,
-        max_scale=2.0,
-        noise_std=0.01,
-        max_amplitude=1.0,
-        frequency_range=(0.5, 2.0),
-        max_mask_duration=50,
-        mask_prob=0.5,
+        crop_size: int = 1024,
+        max_time_warp: Optional[float] = None,
+        scaling: Optional[Tuple[float, float]] = None,
+        gaussian_noise_std: Optional[float] = None,
+        wandering_max_amplitude: Optional[float] = None,
+        wandering_frequency_range: Optional[Tuple[float, float]] = None,
+        max_mask_duration: Optional[int] = None,
+        mask_prob: Optional[float] = None,
     ):
         """
         Args:
-            crop_size: Crops or pads to this size. Defaults to 1000.
-            max_warp: Warps time by this percentage. Defaults to 0.2.
-            min_scale: Amplitude scaling. Defaults to 0.5.
-            max_scale: Amplitude scaling. Defaults to 2.0.
-            noise_std: Gaussian noise std. Defaults to 0.01.
-            max_amplitude: Amplitude of random wandering. Defaults to 1.0.
-            frequency_range: Frequence range of random wandering. Defaults to (0.5, 2.0).
-            max_mask_duration: Max duration of zero masking. Defaults to 50.
-            mask_prob: Probability to completely mask a lead (channel). Defaults to 0.5.
+            crop_size: Crops or pads to this size. Defaults to 1024.
+            max_time_warp: Warps time by this percentage. Defaults to None.
+            scaling: Min and max of amplitude scaling. Defaults to None.
+            gaussian_noise_std: Gaussian noise std. Defaults to None.
+            wandering_max_amplitude: Amplitude of random wandering. Defaults to None.
+            wandering_frequency_range: Frequency range of random wandering. Defaults to None.
+            max_mask_duration: Max duration of zero masking. Defaults to None.
+            mask_prob: Probability to completely mask a lead (channel). Defaults to None.
         """
-        self.transform = Compose(
-            RandomCropOrPad(crop_size),
-            TimeWarping(max_warp),
-            AmplitudeScaling(min_scale, max_scale),
-            GaussianNoise(std=noise_std),
-            RandomWandering(max_amplitude, frequency_range),
-            TimeMasking(max_mask_duration),
-            RandomMaskChannels(mask_prob),
-        )
+        self.augmentations = [RandomCropOrPad(crop_size)]
 
-    def __call__(self, signal):
+        if max_time_warp is not None:
+            self.augmentations.append(TimeWarping(max_time_warp))
+
+        if scaling is not None:
+            min_scale, max_scale = scaling
+            self.augmentations.append(AmplitudeScaling(min_scale, max_scale))
+
+        if gaussian_noise_std is not None:
+            self.augmentations.append(GaussianNoise(std=gaussian_noise_std))
+
+        if (
+            wandering_max_amplitude is not None
+            and wandering_frequency_range is not None
+        ):
+            self.augmentations.append(
+                RandomWandering(wandering_max_amplitude, wandering_frequency_range)
+            )
+
+        if max_mask_duration is not None:
+            self.augmentations.append(TimeMasking(max_mask_duration))
+
+        if mask_prob is not None:
+            self.augmentations.append(RandomMaskChannels(mask_prob))
+
+        self.transform = Compose(*self.augmentations)
+
+    def __call__(self, signal: torch.Tensor) -> torch.Tensor:
         return self.transform(signal)
