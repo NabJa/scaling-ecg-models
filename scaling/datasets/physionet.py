@@ -9,6 +9,13 @@ from tqdm import tqdm
 
 from scaling.augmentations import ECGAugmentation
 
+# Evaluation weights for all classes
+WEIGHTS = pd.read_csv(
+    "https://raw.githubusercontent.com/physionetchallenges/evaluation-2021/refs/heads/main/weights.csv",
+    index_col=0,
+)
+
+# Mapping between SNOMED codes and the corresponding classes
 DX_SCORED = pd.read_csv(
     "https://raw.githubusercontent.com/physionetchallenges/evaluation-2021/refs/heads/main/dx_mapping_scored.csv"
 )
@@ -20,6 +27,69 @@ EQUIVALENCE_MAP = {
     713427006: 59118001,
     284470004: 63593006,
     427172004: 17338001,
+}
+
+# List of classes that are scored in the challenge
+CLASSES = [
+    {"164889003"},
+    {"164890007"},
+    {"6374002"},
+    {"426627000"},
+    {"164909002", "733534002"},
+    {"59118001", "713427006"},
+    {"270492004"},
+    {"713426002"},
+    {"39732003"},
+    {"445118002"},
+    {"164947007"},
+    {"251146004"},
+    {"111975006"},
+    {"698252002"},
+    {"426783006"},
+    {"284470004", "63593006"},
+    {"10370003"},
+    {"365413008"},
+    {"17338001", "427172004"},
+    {"164917005"},
+    {"47665007"},
+    {"427393009"},
+    {"426177001"},
+    {"427084000"},
+    {"164934002"},
+    {"59931005"},
+]
+
+# SnomedCT code for sinus rhythm. Used for the challenge metric.
+SINUS_RYTHM = set(["426783006"])
+
+# Mapping between the index and the label
+LABEL_MAP = {
+    0: "AF",
+    1: "AFL",
+    2: "BBB",
+    3: "Brady",
+    4: "CLBBB, LBBB",
+    5: "CRBBB, RBBB",
+    6: "IAVB",
+    7: "IRBBB",
+    8: "LAD",
+    9: "LAnFB",
+    10: "LQRSV",
+    11: "NSIVCB",
+    12: "NSR",
+    13: "PAC",
+    14: "PR, SVPB",
+    15: "PRWP",
+    16: "PVC",
+    17: "LPR, VPB",
+    18: "LQT",
+    19: "QAb",
+    20: "RAD",
+    21: "SA",
+    22: "SB",
+    23: "STach",
+    24: "TAb",
+    25: "TInv",
 }
 
 

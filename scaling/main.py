@@ -5,9 +5,8 @@ from lightning.pytorch.callbacks import (
     ModelCheckpoint,
 )
 from lightning.pytorch.cli import LightningCLI
-from lightning.pytorch.loggers import WandbLogger
 
-from scaling.datasets import PhysionetDM
+from scaling.datasets.physionet import PhysionetDM
 from scaling.models.model_factory import LitModel
 
 train_transform_defaults = dict(
@@ -40,14 +39,14 @@ valid_transform_defaults = dict(
 )
 
 checkpoint_defaults = dict(
-    monitor="val_loss",
+    monitor="loss/valid",
     save_top_k=1,
     mode="min",
-    filename="model-{epoch:02d}-{val_loss:.2f}",
+    filename="model-{epoch:02d}",
 )
 
 earlystopping_defaults = dict(
-    monitor="val_loss",
+    monitor="loss/valid",
     patience=5,
     mode="min",
 )
