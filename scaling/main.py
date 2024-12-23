@@ -1,13 +1,18 @@
+import os
+
 import torch
+import yaml
+from lightning import Trainer
 from lightning.pytorch.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
     ModelCheckpoint,
 )
-from lightning.pytorch.cli import LightningCLI
+from lightning.pytorch.cli import LightningCLI, SaveConfigCallback
+from lightning.pytorch.loggers import WandbLogger
 
 from scaling.datasets.physionet import PhysionetDM
-from scaling.models.model_factory import LitModel
+from scaling.models.module import LitModel
 
 train_transform_defaults = dict(
     class_path="scaling.augmentations.ECGAugmentation",
@@ -97,6 +102,7 @@ def cli_main():
         PhysionetDM,
         seed_everything_default=42,
         trainer_defaults=trainer_defaults,
+        save_config_kwargs=dict(overwrite=True),
     )
 
 

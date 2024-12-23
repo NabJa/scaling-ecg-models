@@ -1,3 +1,6 @@
+from typing import List
+
+import pandas as pd
 import torch
 from torchmetrics import Metric, MetricCollection
 from torchmetrics.classification import (
@@ -19,9 +22,8 @@ class MultiLabelCalibrationError(Metric):
         num_labels: int,
         n_bins: int = 26,
         norm: str = "l1",
-        compute_on_step: bool = True,
     ):
-        super().__init__(compute_on_step=compute_on_step)
+        super().__init__()
         self.num_labels = num_labels
         self.n_bins = n_bins
         self.norm = norm
@@ -59,87 +61,26 @@ class MultiLabelCalibrationError(Metric):
 
             # Compute calibration error for this label
             ce = calibration_error(
-                label_preds, label_targets, n_bins=self.n_bins, norm=self.norm
+                label_preds,
+                label_targets,
+                task="binary",
+                n_bins=self.n_bins,
+                norm=self.norm,
             )
             labelwise_errors.append(ce)
 
-        return {
-            "labelwise_errors": torch.tensor(labelwise_errors),
-            "average_error": torch.mean(torch.tensor(labelwise_errors)),
-        }
+        return torch.mean(torch.tensor(labelwise_errors))
 
 
-def compute_modified_confusion_matrix_torch(labels, outputs):
+def compute_modified_confusion_matrix(labels, outputs):
     """
     Compute a binary multi-class, multi-label confusion matrix using PyTorch.
     Rows are the labels, and columns are the outputs.
     """
-    num_recordings, num_classes = labels.shape
 
     # Compute normalization factor for each recording
     normalization = torch.clamp(
-        (labels | outputs).sum(dim=1, keepdim=True).float(), min=1.0
-    )
-
-    # Compute contributions to the confusion matrix for each recording
-    contributions = (
-        labels.unsqueeze(2) * outputs.unsqueeze(1).float()
-    ) / normalization.unsqueeze(2)
-
-    # Sum over all recordings to compute the confusion matrix
-    A = contributions.sum(dim=0)
-
-    return A
-
-
-def compute_challenge_metric_torch(
-    labels, outputs, sinus_rhythm=SINUS_RYTHM, classes=CLASSES, weights=WEIGHTS
-) -> float:
-    """
-    Compute the Challenge metric using PyTorch.
-    Args:
-        labels: Binary tensor of shape (num_recordings, num_classes)
-        outputs: Binary tensor of shape (num_recordings, num_classes)
-        sinus_rhythm: The class label for sinus rhythm
-        classes: List of class labels
-        weights: Weights for each class
-    """
-    if sinus_rhythm not in classes:
-        raise ValueError("The sinus rhythm class is not available.")
-
-    sinus_rhythm_index = classes.index(sinus_rhythm)
-
-    # Compute the observed score
-    A_observed = compute_modified_confusion_matrix_torch(labels, outputs)
-    observed_score = torch.nansum(weights * A_observed)
-
-    # Compute the score for the model that always chooses the correct label(s)
-    A_correct = compute_modified_confusion_matrix_torch(labels, labels)
-    correct_score = torch.nansum(weights * A_correct)
-
-    # Compute the score for the model that always chooses the sinus rhythm class
-    inactive_outputs = torch.zeros_like(outputs, dtype=torch.bool)
-    inactive_outputs[:, sinus_rhythm_index] = 1
-    A_inactive = compute_modified_confusion_matrix_torch(labels, inactive_outputs)
-    inactive_score = torch.nansum(weights * A_inactive)
-
-    # Normalize the score
-    if correct_score != inactive_score:
-        normalized_score = (observed_score - inactive_score) / (
-            correct_score - inactive_score
-        )
-    else:
-        normalized_score = 0.0
-
-    return normalized_score.item()
-
-
-def compute_modified_confusion_matrix(labels, outputs) -> torch.Tensor:
-    """Compute a binary multi-class, multi-label confusion matrix."""
-
-    # Compute normalization factor for each recording
-    normalization = torch.clamp(
-        (labels | outputs).sum(dim=1, keepdim=True).float(), min=1.0
+        (labels.bool() | outputs.bool()).sum(dim=1, keepdim=True).float(), min=1.0
     )
 
     # Compute contributions to the confusion matrix for each recording
@@ -160,10 +101,15 @@ class PhysionetMetric(Metric):
 
     full_state_update = False
 
-    def __init__(self, weights, classes, sinus_rhythm, dist_sync_on_step=False):
-        super().__init__(dist_sync_on_step=dist_sync_on_step)
+    def __init__(
+        self,
+        weights: pd.DataFrame,
+        classes: List[set],
+        sinus_rhythm: set,
+    ):
+        super().__init__()
 
-        self.weights = torch.tensor(weights.clone().detach(), dtype=torch.float)
+        self.register_buffer("weights", torch.tensor(weights.values, dtype=torch.float))
         self.classes = classes
 
         if sinus_rhythm not in classes:
@@ -181,18 +127,26 @@ class PhysionetMetric(Metric):
         )
         self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")
 
-    def update(self, labels: torch.Tensor, outputs: torch.Tensor):
+    def update(
+        self,
+        outputs: torch.Tensor,
+        labels: torch.Tensor,
+    ):
         """Update the metric states with new data."""
+        # Ensure internal buffers are on the same device as outputs
+        device = outputs.device
+        self.weights = self.weights.to(device)
+
         # Compute confusion matrices
-        A_observed = compute_modified_confusion_matrix_torch(labels, outputs)
+        A_observed = compute_modified_confusion_matrix(labels, outputs)
         self.observed_score += torch.nansum(self.weights * A_observed)
 
-        A_correct = compute_modified_confusion_matrix_torch(labels, labels)
+        A_correct = compute_modified_confusion_matrix(labels, labels)
         self.correct_score += torch.nansum(self.weights * A_correct)
 
-        inactive_outputs = torch.zeros_like(outputs, dtype=torch.bool)
+        inactive_outputs = torch.zeros_like(outputs, dtype=torch.bool, device=device)
         inactive_outputs[:, self.sinus_rhythm_index] = 1
-        A_inactive = compute_modified_confusion_matrix_torch(labels, inactive_outputs)
+        A_inactive = compute_modified_confusion_matrix(labels, inactive_outputs)
         self.inactive_score += torch.nansum(self.weights * A_inactive)
 
         self.total += labels.size(0)

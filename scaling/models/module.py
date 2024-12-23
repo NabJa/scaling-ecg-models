@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Union
 
+import torch
 from lightning import LightningModule
 from torch import nn
 
@@ -40,7 +41,7 @@ class LitModel(LightningModule):
     def forward(self, x):
         return self.model(x)
 
-    def step(self, batch):
+    def step(self, batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         x, y = batch
         y_hat = self.model(x)
         loss = self.loss_fn(y_hat, y)
@@ -56,7 +57,7 @@ class LitModel(LightningModule):
         loss, y_hat, y = self.step(batch)
         self.log("loss/valid", loss)
 
-        performance = self.metrics(y, y_hat)
-        self.log_dict("performance", performance)
+        performance = self.metrics(y_hat, y.int())
+        self.log_dict(performance)
 
         return loss
