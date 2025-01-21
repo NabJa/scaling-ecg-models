@@ -40,6 +40,17 @@ def getemed_large(**kwargs) -> ECGVisionTransformer:
     )
 
 
+def convnext_pico(**kwargs) -> ConvNeXt:
+    block_setting = [
+        CNBlockConfig(48, 96, 2),
+        CNBlockConfig(96, 192, 2),
+        CNBlockConfig(192, 384, 2),
+        CNBlockConfig(384, None, 2),
+    ]
+    stochastic_depth_prob = kwargs.pop("stochastic_depth_prob", 0.0)
+    return ConvNeXt(block_setting, stochastic_depth_prob, **kwargs)
+
+
 def convnext_mini(**kwargs) -> ConvNeXt:
     block_setting = [
         CNBlockConfig(96, 192, 2),
@@ -206,6 +217,7 @@ def vit_large(**kwargs) -> ECGViT:
 
 
 MODELS = {
+    "convnext_pico": convnext_pico,
     "convnext_mini": convnext_mini,
     "convnext_tiny": convnext_tiny,
     "convnext_small": convnext_small,
