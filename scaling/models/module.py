@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Union
+from typing import Optional, Union
 
 import torch
 from lightning import LightningModule
@@ -20,6 +20,8 @@ class LitModel(LightningModule):
         self,
         model_name: str = "resnet18",
         loss_fn: Union[AvailableLoss, str] = "BCE",
+        width: Optional[int] = None,
+        depth: Optional[int] = None,
         **model_kwargs
     ):
         """
@@ -34,7 +36,15 @@ class LitModel(LightningModule):
         self.loss_fn = (
             AvailableLoss[loss_fn].value if isinstance(loss_fn, str) else loss_fn.value
         )
+        self.width = width
+        self.depth = depth
         self.save_hyperparameters()
+
+        if width is not None:
+            model_kwargs["width"] = width
+        if depth is not None:
+            model_kwargs["depth"] = depth
+
         self.model: nn.Module = MODELS[model_name](**model_kwargs)
         self.metrics = scalar_metrics()
 

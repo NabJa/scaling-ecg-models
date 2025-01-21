@@ -77,8 +77,10 @@ trainer:
 model:
   model_name: resnet18
   loss_fn: BCE
+  width: null
+  depth: null
 data:
-  meta_file_path: null
+  meta_file_path: /sc-scratch/sc-scratch-gbm-radiomics/ecg/physionet_challenge/training_pt/metadata_v5.csv
   train_transform:
     class_path: scaling.augmentations.ECGAugmentation
     init_args:

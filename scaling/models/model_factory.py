@@ -1,6 +1,6 @@
 from scaling.models.convnext import CNBlockConfig, ConvNeXt
 from scaling.models.getemed import ECGVisionTransformer
-from scaling.models.resnet import BasicBlock, Bottleneck, ResNet
+from scaling.models.resnet import BasicBlock, Bottleneck, ResNet, ScalableResNet
 from scaling.models.vit import ECGViT
 
 
@@ -107,8 +107,20 @@ def convnext_large(**kwargs) -> ConvNeXt:
     return ConvNeXt(block_setting, stochastic_depth_prob, **kwargs)
 
 
+def scalable_resnet(**kwargs) -> ScalableResNet:
+    width, depth = kwargs.pop("width"), kwargs.pop("depth")
+    assert (
+        width is not None and depth is not None
+    ), "Width and depth must be provided for scalable resnet."
+    return ScalableResNet(width, depth, **kwargs)
+
+
 def resnet18(**kwargs) -> ResNet:
     return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
+
+
+def resnet18_bottleneck(**kwargs) -> ResNet:
+    return ResNet(Bottleneck, [2, 2, 2, 2], **kwargs)
 
 
 def resnet50(**kwargs) -> ResNet:
@@ -224,6 +236,8 @@ MODELS = {
     "convnext_base": convnext_base,
     "convnext_large": convnext_large,
     "resnet18": resnet18,
+    "resnet18_bottleneck": resnet18_bottleneck,
+    "scalable_resnet": scalable_resnet,
     "resnet50": resnet50,
     "resnet101": resnet101,
     "resnext18": resnext18,

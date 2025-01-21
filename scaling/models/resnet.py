@@ -307,22 +307,31 @@ class ResNet(nn.Module):
 
 
 class ScalableResNet(nn.Module):
+    """
+    A scalable ResNet model that can be configured with width and depth.
+    The depth is distributed across the 4 blocks of the model using _get_layer_depth.
+    Stoachastic depth is also computed based on the model depth using _get_stochastic_depth.
+    """
+
     def __init__(self, width, depth, **kwargs):
+        super().__init__()
         self.width = width
         self.depth = depth
 
         self.model = ResNet(
             Bottleneck,
-            layers=self._compute_layer_depth(),
+            layers=self._get_layer_depth(),
             width_per_group=width,
+            stochastic_depth_prob=self._get_stochastic_depth(),
             **kwargs,
         )
-        super().__init__()
 
-    def _compute_layer_depth(self):
-        """Resnet specific function to allocate the depth to the 4 blocks."""
-        blocks = [1, 1, 1, 1]
+    def _get_layer_depth(self):
+        """Resnet specific function to allocate the layer depth to the 4 blocks of ResNet."""
+        blocks = [1, 1, 1, 1]  # 4 blocks in ResNet with one layer each
         for i in range(self.depth):
+
+            # Logic is inspired by PyTorch implementation of ResNet18-ResNet101
             if i < 8:
                 index = i % 4
             elif i == 8:
@@ -330,8 +339,16 @@ class ScalableResNet(nn.Module):
             else:
                 index = 2
 
-            blocks[index] += 1
+            blocks[index] += 1  # Increase number of layers for the block at index
         return blocks
+
+    def _get_stochastic_depth(self):
+        """Stochastic depth is based on model depth. Very small models have 0 and max is 0.5."""
+        if self.depth < 5:  # Everything smaller or equal to ResNet18
+            return 0.0
+        sd = (self.depth - 4) / (28 - 4) * 0.3
+        sd = min(max(sd, 0), 0.5)
+        return sd
 
     def forward(self, x):
         return self.model(x)
