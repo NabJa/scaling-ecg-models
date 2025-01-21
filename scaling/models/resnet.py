@@ -3,6 +3,7 @@ from typing import Callable, List, Optional, Type, Union
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torchvision.ops import StochasticDepth
 
 
 def conv3x3(
@@ -39,6 +40,7 @@ class BasicBlock(nn.Module):
         base_width: int = 64,
         dilation: int = 1,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
+        stochastic_depth_prob: float = 0.0,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -47,6 +49,9 @@ class BasicBlock(nn.Module):
             raise ValueError("BasicBlock only supports groups=1 and base_width=64")
         if dilation > 1:
             raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
+        if stochastic_depth_prob != 0.0:
+            raise NotImplementedError("Stochastic Depth not supported in BasicBlock")
+
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = norm_layer(planes)
@@ -94,6 +99,7 @@ class Bottleneck(nn.Module):
         base_width: int = 64,
         dilation: int = 1,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
+        stochastic_depth_prob: float = 0.0,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -109,6 +115,7 @@ class Bottleneck(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
+        self.stochastic_depth = StochasticDepth(stochastic_depth_prob, "row")
 
     def forward(self, x: Tensor) -> Tensor:
         identity = x
@@ -127,6 +134,7 @@ class Bottleneck(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
 
+        out = self.stochastic_depth(out)
         out += identity
         out = self.relu(out)
 
@@ -145,6 +153,8 @@ class ResNet(nn.Module):
         replace_stride_with_dilation: Optional[List[bool]] = None,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
         channels=12,
+        initial_kernel_size=7,
+        stochastic_depth_prob=0.0,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -154,6 +164,8 @@ class ResNet(nn.Module):
         self.inplanes = 64
         self.dilation = 1
         self.channels = channels
+        self.initial_kernel_size = initial_kernel_size
+        self.stochastic_depth_prob = stochastic_depth_prob
 
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
@@ -167,11 +179,21 @@ class ResNet(nn.Module):
         self.groups = groups
         self.base_width = width_per_group
         self.conv1 = nn.Conv1d(
-            channels, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False
+            channels,
+            self.inplanes,
+            kernel_size=self.initial_kernel_size,
+            stride=2,
+            padding=3,
+            bias=False,
         )
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
+
+        self._stage_block_id = 0
+        self._sd_prob = 0.0
+        self._total_layers = sum(layers)
+
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(
             block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0]
@@ -223,6 +245,7 @@ class ResNet(nn.Module):
             )
 
         layers = []
+
         layers.append(
             block(
                 self.inplanes,
@@ -233,6 +256,7 @@ class ResNet(nn.Module):
                 self.base_width,
                 previous_dilation,
                 norm_layer,
+                self._get_and_update_stochastic_depth_prob(),
             )
         )
         self.inplanes = planes * block.expansion
@@ -245,10 +269,20 @@ class ResNet(nn.Module):
                     base_width=self.base_width,
                     dilation=self.dilation,
                     norm_layer=norm_layer,
+                    stochastic_depth_prob=self._get_and_update_stochastic_depth_prob(),
                 )
             )
 
         return nn.Sequential(*layers)
+
+    def _get_and_update_stochastic_depth_prob(self):
+        sd_prob = (
+            self.stochastic_depth_prob
+            * self._stage_block_id
+            / (self._total_layers - 1.0)
+        )
+        self._stage_block_id += 1
+        return sd_prob
 
     def _forward_impl(self, x: Tensor) -> Tensor:
         # See note [TorchScript super()]
@@ -270,3 +304,34 @@ class ResNet(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
+
+
+class ScalableResNet(nn.Module):
+    def __init__(self, width, depth, **kwargs):
+        self.width = width
+        self.depth = depth
+
+        self.model = ResNet(
+            Bottleneck,
+            layers=self._compute_layer_depth(),
+            width_per_group=width,
+            **kwargs,
+        )
+        super().__init__()
+
+    def _compute_layer_depth(self):
+        """Resnet specific function to allocate the depth to the 4 blocks."""
+        blocks = [1, 1, 1, 1]
+        for i in range(self.depth):
+            if i < 8:
+                index = i % 4
+            elif i == 8:
+                index = 1
+            else:
+                index = 2
+
+            blocks[index] += 1
+        return blocks
+
+    def forward(self, x):
+        return self.model(x)
