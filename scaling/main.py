@@ -1,15 +1,12 @@
-import os
+### Using lightning CLI as entry point. See https://lightning.ai/docs/pytorch/stable/cli/lightning_cli.html
 
 import torch
-import yaml
-from lightning import Trainer
 from lightning.pytorch.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
     ModelCheckpoint,
 )
-from lightning.pytorch.cli import LightningCLI, SaveConfigCallback
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.cli import LightningCLI
 
 from scaling.datasets.physionet import PhysionetDM
 from scaling.models.module import LitModel
@@ -90,7 +87,6 @@ class PhysionetCLI(LightningCLI):
         parser.add_lr_scheduler_args(torch.optim.lr_scheduler.ExponentialLR)
 
         # Set additional defaults
-
         parser.set_defaults({"lr_scheduler.gamma": 0.98})
         parser.set_defaults({"data.val_transform": valid_transform_defaults})
         parser.set_defaults({"data.train_transform": train_transform_defaults})
