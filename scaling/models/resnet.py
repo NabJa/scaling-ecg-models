@@ -146,6 +146,7 @@ class ResNet(nn.Module):
         self,
         block: Type[Union[BasicBlock, Bottleneck]],
         layers: List[int],
+        inplanes: int = 64,
         num_classes: int = 26,
         zero_init_residual: bool = False,
         groups: int = 1,
@@ -161,7 +162,7 @@ class ResNet(nn.Module):
             norm_layer = nn.BatchNorm1d
         self._norm_layer = norm_layer
 
-        self.inplanes = 64
+        self.inplanes = inplanes
         self.dilation = 1
         self.channels = channels
         self.initial_kernel_size = initial_kernel_size
@@ -194,18 +195,30 @@ class ResNet(nn.Module):
         self._sd_prob = 0.0
         self._total_layers = sum(layers)
 
-        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer1 = self._make_layer(block, inplanes, layers[0])
         self.layer2 = self._make_layer(
-            block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0]
+            block,
+            inplanes * 2,
+            layers[1],
+            stride=2,
+            dilate=replace_stride_with_dilation[0],
         )
         self.layer3 = self._make_layer(
-            block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1]
+            block,
+            inplanes * 4,
+            layers[2],
+            stride=2,
+            dilate=replace_stride_with_dilation[1],
         )
         self.layer4 = self._make_layer(
-            block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2]
+            block,
+            inplanes * 8,
+            layers[3],
+            stride=2,
+            dilate=replace_stride_with_dilation[2],
         )
         self.avgpool = nn.AdaptiveAvgPool1d(1)
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.fc = nn.Linear(inplanes * 8 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
@@ -321,7 +334,7 @@ class ScalableResNet(nn.Module):
         self.model = ResNet(
             Bottleneck,
             layers=self._get_layer_depth(),
-            width_per_group=width,
+            inplanes=width,
             stochastic_depth_prob=self._get_stochastic_depth(),
             **kwargs,
         )
