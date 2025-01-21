@@ -106,6 +106,7 @@ class PhysionetMetric(Metric):
         weights: pd.DataFrame,
         classes: List[set],
         sinus_rhythm: set,
+        threshold: float = 0.5,
     ):
         super().__init__()
 
@@ -127,24 +128,33 @@ class PhysionetMetric(Metric):
         )
         self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")
 
+        self.threshold = threshold
+
     def update(
         self,
-        outputs: torch.Tensor,
+        preds: torch.Tensor,
         labels: torch.Tensor,
     ):
         """Update the metric states with new data."""
         # Ensure internal buffers are on the same device as outputs
-        device = outputs.device
+        device = preds.device
         self.weights = self.weights.to(device)
 
+        # Apply sigmoid to outputs
+        if preds.is_floating_point():
+            if not torch.all((preds >= 0) * (preds <= 1)):
+                # preds is logits, convert with sigmoid
+                preds = preds.sigmoid()
+            preds = preds > self.threshold
+
         # Compute confusion matrices
-        A_observed = compute_modified_confusion_matrix(labels, outputs)
+        A_observed = compute_modified_confusion_matrix(labels, preds)
         self.observed_score += torch.nansum(self.weights * A_observed)
 
         A_correct = compute_modified_confusion_matrix(labels, labels)
         self.correct_score += torch.nansum(self.weights * A_correct)
 
-        inactive_outputs = torch.zeros_like(outputs, dtype=torch.bool, device=device)
+        inactive_outputs = torch.zeros_like(preds, dtype=torch.bool, device=device)
         inactive_outputs[:, self.sinus_rhythm_index] = 1
         A_inactive = compute_modified_confusion_matrix(labels, inactive_outputs)
         self.inactive_score += torch.nansum(self.weights * A_inactive)
