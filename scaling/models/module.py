@@ -22,6 +22,9 @@ class LitModel(LightningModule):
         loss_fn: Union[AvailableLoss, str] = "BCE",
         width: Optional[int] = None,
         depth: Optional[int] = None,
+        initial_kernel_size: Optional[int] = None,
+        initial_stride: Optional[int] = None,
+        initial_padding: Optional[int] = None,
         **model_kwargs
     ):
         """
@@ -38,13 +41,22 @@ class LitModel(LightningModule):
         )
         self.width = width
         self.depth = depth
-        self.save_hyperparameters()
+        self.initial_kernel_size = initial_kernel_size
+        self.initial_stride = initial_stride
+        self.initial_padding = initial_padding
 
         if width is not None:
             model_kwargs["width"] = width
         if depth is not None:
             model_kwargs["depth"] = depth
+        if initial_kernel_size is not None:
+            model_kwargs["initial_kernel_size"] = initial_kernel_size
+        if initial_stride is not None:
+            model_kwargs["initial_stride"] = initial_stride
+        if initial_padding is not None:
+            model_kwargs["initial_padding"] = initial_padding
 
+        self.save_hyperparameters()
         self.model: nn.Module = MODELS[model_name](**model_kwargs)
         self.metrics = scalar_metrics()
 
@@ -71,3 +83,7 @@ class LitModel(LightningModule):
         self.log_dict(performance)
 
         return loss
+
+    def on_validation_end(self):
+        self.metrics.reset()
+        return super().on_validation_end()
