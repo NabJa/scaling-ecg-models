@@ -137,6 +137,9 @@ class ConvNeXt(nn.Module):
         block: Optional[Callable[..., nn.Module]] = None,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
         channels=12,
+        initial_kernel_size=4,
+        initial_stride=4,
+        initial_padding=4,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -155,6 +158,10 @@ class ConvNeXt(nn.Module):
         if norm_layer is None:
             norm_layer = partial(LayerNorm1d, eps=1e-6)
 
+        self.initial_kernel_size = initial_kernel_size
+        self.initial_stride = initial_stride
+        self.initial_padding = initial_padding
+
         layers: List[nn.Module] = []
 
         # Stem
@@ -163,9 +170,9 @@ class ConvNeXt(nn.Module):
             Conv1dNormActivation(
                 channels,
                 firstconv_output_channels,
-                kernel_size=4,
-                stride=4,
-                padding=0,
+                kernel_size=initial_kernel_size,
+                stride=initial_stride,
+                padding=initial_padding,
                 norm_layer=norm_layer,
                 activation_layer=None,
                 bias=True,

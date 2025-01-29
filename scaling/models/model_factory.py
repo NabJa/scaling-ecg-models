@@ -123,6 +123,25 @@ def resnet18_bottleneck(**kwargs) -> ResNet:
     return ResNet(Bottleneck, [2, 2, 2, 2], **kwargs)
 
 
+def resnet18_dialated_small(**kwargs) -> ResNet:
+    return ResNet(
+        Bottleneck,
+        [2, 2, 2, 2],
+        inplanes=40,
+        replace_stride_with_dilation=[True, False, False],
+        **kwargs,
+    )
+
+
+def resnet18_dialated(**kwargs) -> ResNet:
+    return ResNet(
+        Bottleneck,
+        [2, 2, 2, 2],
+        replace_stride_with_dilation=[True, True, True],
+        **kwargs,
+    )
+
+
 def resnet50(**kwargs) -> ResNet:
     return ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
 
@@ -228,15 +247,22 @@ def vit_large(**kwargs) -> ECGViT:
     )
 
 
+from functools import partial
+
 MODELS = {
     "convnext_pico": convnext_pico,
     "convnext_mini": convnext_mini,
+    "convnext_mini_simple_kernel_init": partial(
+        convnext_mini, initial_kernel_size=7, initial_stride=2, initial_padding=3
+    ),
     "convnext_tiny": convnext_tiny,
     "convnext_small": convnext_small,
     "convnext_base": convnext_base,
     "convnext_large": convnext_large,
     "resnet18": resnet18,
     "resnet18_bottleneck": resnet18_bottleneck,
+    "resnet18_dialated_small": resnet18_dialated_small,
+    "resnet18_dialated": resnet18_dialated,
     "scalable_resnet": scalable_resnet,
     "resnet50": resnet50,
     "resnet101": resnet101,

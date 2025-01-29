@@ -49,8 +49,6 @@ class BasicBlock(nn.Module):
             raise ValueError("BasicBlock only supports groups=1 and base_width=64")
         if dilation > 1:
             raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
-        if stochastic_depth_prob != 0.0:
-            raise NotImplementedError("Stochastic Depth not supported in BasicBlock")
 
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
@@ -60,6 +58,7 @@ class BasicBlock(nn.Module):
         self.bn2 = norm_layer(planes)
         self.downsample = downsample
         self.stride = stride
+        self.stochastic_depth = StochasticDepth(stochastic_depth_prob, "row")
 
     def forward(self, x: Tensor) -> Tensor:
         identity = x
@@ -74,6 +73,7 @@ class BasicBlock(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
 
+        out = self.stochastic_depth(out)
         out += identity
         out = self.relu(out)
 
@@ -155,6 +155,8 @@ class ResNet(nn.Module):
         norm_layer: Optional[Callable[..., nn.Module]] = None,
         channels=12,
         initial_kernel_size=7,
+        initial_stride=2,
+        initial_padding=3,
         stochastic_depth_prob=0.0,
     ) -> None:
         super().__init__()
@@ -166,6 +168,8 @@ class ResNet(nn.Module):
         self.dilation = 1
         self.channels = channels
         self.initial_kernel_size = initial_kernel_size
+        self.initial_stride = initial_stride
+        self.initial_padding = initial_padding
         self.stochastic_depth_prob = stochastic_depth_prob
 
         if replace_stride_with_dilation is None:
@@ -183,8 +187,8 @@ class ResNet(nn.Module):
             channels,
             self.inplanes,
             kernel_size=self.initial_kernel_size,
-            stride=2,
-            padding=3,
+            stride=self.initial_stride,
+            padding=self.initial_padding,
             bias=False,
         )
         self.bn1 = norm_layer(self.inplanes)
@@ -332,7 +336,7 @@ class ScalableResNet(nn.Module):
         self.depth = depth
 
         self.model = ResNet(
-            Bottleneck,
+            BasicBlock,
             layers=self._get_layer_depth(),
             inplanes=width,
             stochastic_depth_prob=self._get_stochastic_depth(),
