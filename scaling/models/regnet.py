@@ -3,8 +3,10 @@ from collections import OrderedDict
 from fractions import Fraction
 from typing import Any, Callable, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from lightning import LightningModule
+from sklearn.cluster import KMeans
 from torch import Tensor, nn
 from torchvision.ops.misc import ConvNormActivation
 
@@ -282,6 +284,7 @@ class BlockParams:
         bottleneck_multiplier: float = 1.0,
         input_resolution: Optional[int] = None,
         se_ratio: Optional[float] = None,
+        max_stages: int = 7,  # Add a parameter for maximum number of stages
         **kwargs: Any,
     ) -> "BlockParams":
         QUANT = 8
@@ -296,7 +299,6 @@ class BlockParams:
 
         # Enforce maximum capacity
         if input_resolution is not None:
-            # Input resolution is halved every stage
             max_capacity = math.log2(input_resolution) - 3
             block_capacity = torch.clamp(block_capacity, max=max_capacity)
 
@@ -306,19 +308,28 @@ class BlockParams:
             .int()
             .tolist()
         )
-        unique_widths = list(set(block_widths))
 
-        # Ensure unique widths
-        if input_resolution is not None and len(unique_widths) > max_capacity:
-            # Merge smallest differences (example: keep first 5 sorted unique widths)
-            unique_widths_sorted = sorted(unique_widths)
-            selected_widths = unique_widths_sorted[:5]
-            # Map each width to the nearest selected width
+        # Determine unique widths and limit to max_stages
+        unique_widths = sorted(list(set(block_widths)))
+        if len(unique_widths) > max_stages:
+            # If there are more unique widths than max_stages, merge the closest widths
+            # into max_stages groups
+
+            # Use KMeans clustering to group widths into max_stages clusters
+            kmeans = KMeans(n_clusters=max_stages, random_state=0).fit(
+                np.array(unique_widths).reshape(-1, 1)
+            )
+            cluster_centers = sorted(
+                [int(center[0]) for center in kmeans.cluster_centers_]
+            )
+
+            # Map each width to the nearest cluster center
             block_widths = [
-                min(selected_widths, key=lambda x: abs(x - w)) for w in block_widths
+                min(cluster_centers, key=lambda x: abs(x - w)) for w in block_widths
             ]
+            unique_widths = cluster_centers
 
-        # Convert to per-stage parameters
+        # Split into stages based on unique widths
         splits = [
             w != wp or r != rp
             for w, wp, r, rp in zip(
@@ -416,7 +427,7 @@ class RegNet(nn.Module):
             width_out=stem_width,
             kernel_size=init_kernel_size,
             norm_layer=norm_layer,
-            activation=activation,
+            activation_layer=activation,
         )
 
         current_width = stem_width
@@ -483,6 +494,7 @@ class RegNetModule(LightningModule):
     def __init__(
         self,
         depth,
+        w_init,
         w_0,
         w_a,
         w_m,
@@ -495,7 +507,8 @@ class RegNetModule(LightningModule):
         gamma_neg=4,
         gamma_pos=1,
         init_lr=1e-3,
-        lr_decay_gamma=0.95,
+        lr_decay_gamma=0.98,
+        weight_decay=0.0,
     ):
         super().__init__()
 
@@ -513,7 +526,7 @@ class RegNetModule(LightningModule):
         )
         self.model = RegNet(
             init_kernel_size=init_kernel_size,
-            stem_width=w_0,
+            stem_width=w_init,
             block_params=block_params,
             num_classes=num_classes,
         )
@@ -550,7 +563,11 @@ class RegNetModule(LightningModule):
         return super().on_validation_end()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.init_lr)
+        optimizer = torch.optim.SGD(
+            self.parameters(),
+            lr=self.hparams.init_lr,
+            weight_decay=self.hparams.weight_decay,
+        )
         scheduler = torch.optim.lr_scheduler.ExponentialLR(
             optimizer, gamma=self.hparams.lr_decay_gamma
         )
