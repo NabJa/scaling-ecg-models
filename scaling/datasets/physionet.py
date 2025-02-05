@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import numpy as np
@@ -267,6 +268,8 @@ class PhysionetDM(LightningDataModule):
         self.train_transform = train_transform
         self.val_transform = val_transform
 
+        self.num_workers = os.cpu_count()
+
         self.save_hyperparameters()
 
     def setup(self, stage=None):
@@ -293,6 +296,8 @@ class PhysionetDM(LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             drop_last=True,
+            num_workers=self.num_workers,
+            pin_memory=True,
         )
 
     def val_dataloader(self):
@@ -300,4 +305,5 @@ class PhysionetDM(LightningDataModule):
             self.valid,
             batch_size=self.batch_size,
             shuffle=False,
+            num_workers=self.num_workers,
         )
