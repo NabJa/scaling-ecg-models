@@ -509,6 +509,7 @@ class RegNetModule(LightningModule):
         init_lr=1e-3,
         lr_decay_gamma=0.98,
         weight_decay=0.0,
+        optimizer="sgd",
     ):
         super().__init__()
 
@@ -563,11 +564,29 @@ class RegNetModule(LightningModule):
         return super().on_validation_end()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(
-            self.parameters(),
-            lr=self.hparams.init_lr,
-            weight_decay=self.hparams.weight_decay,
-        )
+        if self.hparams.optimizer.lower() == "sgd":
+            optimizer = torch.optim.SGD(
+                self.parameters(),
+                lr=self.hparams.init_lr,
+                weight_decay=self.hparams.weight_decay,
+            )
+        elif self.hparams.optimizer.lower() == "adamw":
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=self.hparams.init_lr,
+                weight_decay=self.hparams.weight_decay,
+            )
+        elif self.hparams.optimizer.lower() == "adam":
+            optimizer = torch.optim.Adam(
+                self.parameters(),
+                lr=self.hparams.init_lr,
+                weight_decay=self.hparams.weight_decay,
+            )
+        else:
+            raise ValueError(
+                f"Invalid optimizer {self.hparams.optimizer}. Use 'sgd', 'adam' or 'adamw'."
+            )
+
         scheduler = torch.optim.lr_scheduler.ExponentialLR(
             optimizer, gamma=self.hparams.lr_decay_gamma
         )

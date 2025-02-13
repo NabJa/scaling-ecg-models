@@ -90,6 +90,8 @@ def objective(trial, dirpath="./", crop_size=1024, batch_size=32, num_workers=16
 
     hyper_params = suggest_param_grid(trial)
 
+    hyper_params["optimizer"] = "adamw"
+
     model = RegNetModule(**hyper_params)
     datamodule = prepare_dataset(
         crop_size=crop_size, batch_size=batch_size, num_workers=num_workers
