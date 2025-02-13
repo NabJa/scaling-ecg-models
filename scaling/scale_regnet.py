@@ -1,3 +1,4 @@
+import gc
 import math
 from functools import partial
 from pathlib import Path
@@ -62,7 +63,7 @@ def suggest_param_grid(trial):
     }
 
 
-def prepare_dataset(crop_size, batch_size):
+def prepare_dataset(crop_size, batch_size, num_workers):
 
     meta_path = "/sc-scratch/sc-scratch-gbm-radiomics/ecg/physionet_challenge/training_pt/metadata_v5.csv"
     train_transform = ECGAugmentation(
@@ -81,20 +82,24 @@ def prepare_dataset(crop_size, batch_size):
         train_transform=train_transform,
         val_transform=val_transform,
         batch_size=batch_size,
+        num_workers=num_workers,
     )
 
 
-def objective(trial, dirpath="./", crop_size=1024, batch_size=32):
+def objective(trial, dirpath="./", crop_size=1024, batch_size=32, num_workers=16):
 
     hyper_params = suggest_param_grid(trial)
 
     model = RegNetModule(**hyper_params)
-    datamodule = prepare_dataset(crop_size=crop_size, batch_size=batch_size)
+    datamodule = prepare_dataset(
+        crop_size=crop_size, batch_size=batch_size, num_workers=num_workers
+    )
 
     model_checkpoints = Path(dirpath) / "models" / f"{int(trial.number):03}"
     model_checkpoints.mkdir(parents=True, exist_ok=True)
 
     trainer = Trainer(
+        accelerator="gpu",
         max_epochs=20,
         gradient_clip_val=1.0,
         deterministic=True,
@@ -126,6 +131,7 @@ def objective(trial, dirpath="./", crop_size=1024, batch_size=32):
     del trainer
 
     torch.cuda.empty_cache()
+    gc.collect()
 
     return final_loss
 
@@ -141,5 +147,5 @@ if __name__ == "__main__":
         sampler=RandomSampler(),
     )
 
-    obj = partial(objective, dirpath=root)
-    study.optimize(obj, n_trials=100)
+    obj = partial(objective, dirpath=root, batch_size=32, num_workers=16)
+    study.optimize(obj, n_trials=120, gc_after_trial=True)

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -245,6 +246,7 @@ class PhysionetDM(LightningDataModule):
         fold: int = 0,
         batch_size: int = 32,
         remove_quivalent_labels: bool = True,
+        num_workers: Optional[int] = None,
     ):
         """
         Args:
@@ -268,7 +270,7 @@ class PhysionetDM(LightningDataModule):
         self.train_transform = train_transform
         self.val_transform = val_transform
 
-        self.num_workers = os.cpu_count()
+        self.num_workers = os.cpu_count() if num_workers is None else num_workers
 
         self.save_hyperparameters()
 
