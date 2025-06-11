@@ -1,0 +1,30 @@
+[project]
+name = "convnext-scaling"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jabareen", email = "nabil.jabareen@charite.de" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "ipykernel>=6.29.5",
+    "lightning>=2.5.1.post0",
+    "numpy>=2.3.0",
+    "optuna>=4.3.0",
+    "pandas>=2.3.0",
+    "scikit-learn>=1.7.0",
+    "scipy>=1.15.3",
+    "seaborn>=0.13.2",
+    "torch>=2.7.1",
+    "torchmetrics>=1.7.2",
+    "tqdm>=4.67.1",
+    "wandb>=0.20.1",
+]
+
+[project.scripts]
+convnext-scaling = "convnext_scaling:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
