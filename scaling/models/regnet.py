@@ -570,6 +570,13 @@ class RegNetModule(LightningModule):
                 lr=self.hparams.init_lr,
                 weight_decay=self.hparams.weight_decay,
             )
+        elif self.hparams.optimizer.lower() == "sgdm":
+            optimizer = torch.optim.SGD(
+                self.parameters(),
+                lr=self.hparams.init_lr,
+                weight_decay=self.hparams.weight_decay,
+                momentum=0.9,
+            )
         elif self.hparams.optimizer.lower() == "adamw":
             optimizer = torch.optim.AdamW(
                 self.parameters(),
