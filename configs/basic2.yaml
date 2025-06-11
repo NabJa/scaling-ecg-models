@@ -1,0 +1,131 @@
+# lightning.pytorch==2.4.0
+seed_everything: 42
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  precision: 32
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      name: null
+      save_dir: .
+      version: null
+      offline: false
+      dir: null
+      id: null
+      anonymous: null
+      project: PhysioNetScaling
+      log_model: false
+      experiment: null
+      prefix: ''
+      checkpoint_name: null
+      entity: null
+      notes: null
+      tags: null
+      config: null
+      config_exclude_keys: null
+      config_include_keys: null
+      allow_val_change: null
+      group: null
+      job_type: null
+      mode: null
+      force: null
+      reinit: null
+      resume: null
+      resume_from: null
+      fork_from: null
+      save_code: null
+      tensorboard: null
+      sync_tensorboard: null
+      monitor_gym: null
+      settings: null
+  callbacks: null
+  fast_dev_run: false
+  max_epochs: 100
+  min_epochs: null
+  max_steps: -1
+  min_steps: null
+  max_time: null
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+  limit_predict_batches: null
+  overfit_batches: 0.0
+  val_check_interval: null
+  check_val_every_n_epoch: 2
+  num_sanity_val_steps: null
+  log_every_n_steps: null
+  enable_checkpointing: null
+  enable_progress_bar: null
+  enable_model_summary: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  gradient_clip_algorithm: null
+  deterministic: true
+  benchmark: null
+  inference_mode: true
+  use_distributed_sampler: true
+  profiler: null
+  detect_anomaly: false
+  barebones: false
+  plugins: null
+  sync_batchnorm: false
+  reload_dataloaders_every_n_epochs: 0
+  default_root_dir: null
+model:
+  model_name: resnet18
+  loss_fn: BCE
+  width: null
+  depth: null
+  initial_kernel_size: null
+data:
+  meta_file_path: /sc-scratch/sc-scratch-gbm-radiomics/ecg/physionet_challenge/training_pt/metadata_v5.csv
+  train_transform:
+    class_path: scaling.augmentations.ECGAugmentation
+    init_args:
+      crop_size: 1024
+      max_time_warp: 0.2
+      scaling:
+      - 0.8
+      - 1.2
+      gaussian_noise_std: 0.01
+      wandering_max_amplitude: 1.0
+      wandering_frequency_range:
+      - 0.5
+      - 2.0
+      max_mask_duration: 50
+      mask_prob: 0.5
+  val_transform:
+    class_path: scaling.augmentations.ECGAugmentation
+    init_args:
+      crop_size: 1024
+      max_time_warp: null
+      scaling: null
+      gaussian_noise_std: null
+      wandering_max_amplitude: null
+      wandering_frequency_range: null
+      max_mask_duration: null
+      mask_prob: null
+  fold: 0
+  batch_size: 32
+  remove_quivalent_labels: true
+optimizer:
+  lr: 0.001
+  betas:
+  - 0.9
+  - 0.999
+  eps: 1.0e-08
+  weight_decay: 0.01
+  amsgrad: false
+  maximize: false
+  foreach: null
+  capturable: false
+  differentiable: false
+  fused: null
+lr_scheduler:
+  gamma: 0.98
+  last_epoch: -1
+  verbose: deprecated
+ckpt_path: null
