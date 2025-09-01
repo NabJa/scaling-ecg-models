@@ -16,7 +16,7 @@ This work has been accepted in the European Heart Journal – Digital Health (20
 
 ### More compute leads to better performance
 - Optimizer has a significant impact on performance and scaling capabilities
-- Just using more compute does not improve performance. A careful choice of model architecture, optimizer, and hyperparamters is1 required.  
+- Just using more compute does not improve performance. A careful choice of model architecture, optimizer, and hyperparamters is required.  
 <img src="notebooks/design_space_results/space_a/pareto_optimizer.png" alt="drawing" width="500"/>
 
 *Figure 1: Pareto front of model performance (Physionet Accuracy is a balanced accuracy described [here](https://physionet.org/content/challenge-2021/1.0.3/)) vs. total compute (FLOPs) for different optimizers. AdamW clearly outperforms SGD and SGD with Momentum.*
@@ -24,7 +24,7 @@ This work has been accepted in the European Heart Journal – Digital Health (20
 ### Model architecture and scale predicts performance
 <img src="notebooks/design_space_results/space_a/cross_validation_perforamnce.png" alt="drawing" width="470"/>
 
-*Figure 2: Random forest predicts perforamance based on hyperparameters. Shown are the regression plots for a 3-fold cross validation and the average pearson correlaction coeafficient.*
+*Figure 2: Random Forest predicts perforamance based on hyperparameters. Shown are the regression plots for a 3-fold cross validation and the average pearson correlaction coeafficient.*
 
 
 ### Feature importance 
