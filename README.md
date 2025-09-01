@@ -1,9 +1,12 @@
-# Scaling Laws for ConvNeXt on ECG Data
-
-*Published in European Heart Journal - Digital Health 2025*
+# Scaling Laws for NNs on ECG Data
 
 ## Introduction
-This project aims to determine the scaling laws for the ConvNeXt model when applied to ECG (Electrocardiogram) data. Scaling laws help in understanding how the performance of a model changes with respect to its size, the amount of data, and available compute.
+This project aims to determine the scaling laws for the neural networks when applied to ECG (Electrocardiogram) data. Scaling laws help in understanding how the performance of a model changes with respect to its size, the amount of data, and available compute.
+
+## News
+This work has been accepted in the European Heart Journal – Digital Health (2025): **Learning to scale: deriving data-driven scaling laws for ECG-optimized CNNs**
+- 👉 *Link to article (to be added)*
+
 
 ## Next Steps
 - [ ] Extend the design space to include Transformer based models
@@ -20,7 +23,7 @@ This project aims to determine the scaling laws for the ConvNeXt model when appl
 ### Model architecture and scale predicts performance
 <img src="notebooks/design_space_results/space_a/cross_validation_perforamnce.png" alt="drawing" width="470"/>
 
-*Figure 2: *
+*Figure 2: Random forest predicts perforamance based on hyperparameters. Shown are the regression plots for a 3-fold cross validation and the average pearson correlaction coeafficient.*
 
 
 ### Feature importance 
@@ -29,9 +32,14 @@ This project aims to determine the scaling laws for the ConvNeXt model when appl
 - SGD(-Momentum) does not work well with deep networks ($depth$). Use AdamW instead.
 ![feature importance](notebooks/design_space_results/space_a/feature_impurity.png)
 
+*Figure 3: Gini importance of scaling hyperparameters and their spearman rank correlation with Physionet Accuracy performance metric.*
 
-### Inference time benchmark on various hardware platforms and OpenVINO optimization levels
+
+
+### Inference benchmark
 <img src="notebooks/design_space_results/space_a/runtime_box.png" alt="drawing" width="470"/>
+
+*Figure 3: Inference time benchmark on various hardware platforms and OpenVINO optimization levels. DML=Data Manipulation Language, GPU=NVIDIA A100, M4=Apple M4, AUTO=OpenVINO+Intel COREi7, CPU=Intel COREi7, NPU=Neural Processing Unit .*
 
 ## Dataset
 
