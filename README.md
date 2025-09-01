@@ -9,8 +9,8 @@ This work has been accepted in the European Heart Journal – Digital Health (20
 
 
 ## Next Steps
-- [ ] Extend the design space to include Transformer based models
-- [ ] Use the learned scaling laws to scale models to larger sizes
+- [ ] Extend the design space to include Transformer based models. Do Transformers scale better than CNNs?
+- [ ] Use the learned scaling laws to scale models to (much) larger sizes. How big can we go?
 
 ## Results
 
@@ -18,6 +18,7 @@ This work has been accepted in the European Heart Journal – Digital Health (20
 - Optimizer has a significant impact on performance and scaling capabilities
 - Just using more compute does not improve performance. A careful choice of model architecture, optimizer, and hyperparamters is1 required.  
 <img src="notebooks/design_space_results/space_a/pareto_optimizer.png" alt="drawing" width="500"/>
+
 *Figure 1: Pareto front of model performance (Physionet Accuracy is a balanced accuracy described [here](https://physionet.org/content/challenge-2021/1.0.3/)) vs. total compute (FLOPs) for different optimizers. AdamW clearly outperforms SGD and SGD with Momentum.*
 
 ### Model architecture and scale predicts performance
